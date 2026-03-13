@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Terminal, Menu, X, Cpu } from "lucide-react";
+import { Terminal, Menu, X, Cpu, Calendar } from "lucide-react";
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [location] = useLocation();
 
   // Add scroll listener in a real app, mock it here for simplicity
   if (typeof window !== "undefined") {
@@ -13,6 +14,8 @@ export function Navbar() {
       setIsScrolled(window.scrollY > 20);
     });
   }
+
+  const isHome = location === "/";
 
   return (
     <nav 
@@ -32,16 +35,26 @@ export function Navbar() {
 
         {/* Desktop Nav */}
         <div className="hidden md:flex items-center gap-8">
-          <Link href="#services"><a className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Architecture</a></Link>
-          <Link href="#portfolio"><a className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Deployments</a></Link>
-          <Link href="#docs"><a className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">API Docs</a></Link>
+          {isHome ? (
+            <>
+              <a href="#services" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Architecture</a>
+              <a href="#portfolio" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Deployments</a>
+            </>
+          ) : (
+            <>
+              <Link href="/"><a className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Home</a></Link>
+            </>
+          )}
+          <a href="#" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">API Docs</a>
           <Button className="rounded-full px-6 font-medium bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20" variant="outline">
             Client Portal
           </Button>
-          <Button className="rounded-full px-6 font-medium shadow-[0_0_15px_rgba(59,130,246,0.3)]">
-            <Terminal className="w-4 h-4 mr-2" />
-            Initialize Project
-          </Button>
+          <Link href="/book">
+            <Button className="rounded-full px-6 font-medium shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+              <Calendar className="w-4 h-4 mr-2" />
+              Book Session
+            </Button>
+          </Link>
         </div>
 
         {/* Mobile Toggle */}
@@ -56,11 +69,22 @@ export function Navbar() {
       {/* Mobile Menu */}
       {mobileMenuOpen && (
         <div className="md:hidden absolute top-full left-0 w-full bg-card border-b border-border p-4 flex flex-col gap-4 shadow-xl">
-          <Link href="#services"><a className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground">Architecture</a></Link>
-          <Link href="#portfolio"><a className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground">Deployments</a></Link>
-          <Link href="#docs"><a className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground">API Docs</a></Link>
+          {isHome ? (
+            <>
+              <a href="#services" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground" onClick={() => setMobileMenuOpen(false)}>Architecture</a>
+              <a href="#portfolio" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground" onClick={() => setMobileMenuOpen(false)}>Deployments</a>
+            </>
+          ) : (
+             <Link href="/"><a className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground" onClick={() => setMobileMenuOpen(false)}>Home</a></Link>
+          )}
+          <a href="#" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground" onClick={() => setMobileMenuOpen(false)}>API Docs</a>
           <Button className="w-full justify-start mt-2" variant="outline">Client Portal</Button>
-          <Button className="w-full justify-start">Initialize Project</Button>
+          <Link href="/book" onClick={() => setMobileMenuOpen(false)}>
+            <Button className="w-full justify-start mt-2">
+              <Calendar className="w-4 h-4 mr-2" />
+              Book Session
+            </Button>
+          </Link>
         </div>
       )}
     </nav>
