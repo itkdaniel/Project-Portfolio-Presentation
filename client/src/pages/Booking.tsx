@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
 import * as z from "zod";
-import { format, addDays, startOfToday, setHours, setMinutes, isSameDay } from "date-fns";
+import { format, addDays, startOfToday, isSameDay } from "date-fns";
 import { Calendar as CalendarIcon, Clock, CheckCircle2, User, Mail, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -11,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
+import { bookingsApi } from "@/lib/api";
 import {
   Form,
   FormControl,
@@ -29,18 +31,15 @@ const bookingSchema = z.object({
 
 type BookingValues = z.infer<typeof bookingSchema>;
 
-// Mock available times for the next 14 days
 const generateAvailableTimes = () => {
   const times: Record<string, string[]> = {};
   const today = startOfToday();
   
   for (let i = 1; i <= 14; i++) {
     const date = addDays(today, i);
-    // Skip weekends
     if (date.getDay() === 0 || date.getDay() === 6) continue;
     
     const dateStr = date.toISOString();
-    // Randomize available slots for realism
     const slots = [];
     const hours = [9, 10, 11, 13, 14, 15, 16];
     
@@ -66,12 +65,12 @@ export default function Booking() {
 
   const form = useForm<BookingValues>({
     resolver: zodResolver(bookingSchema),
-    defaultValues: {
-      name: "",
-      email: "",
-      company: "",
-      details: "",
-    },
+    defaultValues: { name: "", email: "", company: "", details: "" },
+  });
+
+  const bookingMutation = useMutation({
+    mutationFn: bookingsApi.create,
+    onSuccess: () => setIsBooked(true),
   });
 
   const availableTimes = selectedDate 
@@ -81,9 +80,13 @@ export default function Booking() {
     : [];
 
   const onSubmit = (data: BookingValues) => {
-    // In a real app, this would hit an API
-    console.log("Booking submitted:", { ...data, date: selectedDate, time: selectedTime });
-    setIsBooked(true);
+    if (!selectedDate || !selectedTime) return;
+    bookingMutation.mutate({
+      ...data,
+      company: data.company || null,
+      date: format(selectedDate, "yyyy-MM-dd"),
+      time: selectedTime,
+    });
   };
 
   const today = new Date();
@@ -93,7 +96,6 @@ export default function Booking() {
       <Navbar />
       
       <main className="flex-1 pt-32 pb-24 relative overflow-hidden">
-        {/* Background Effects */}
         <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-primary/5 blur-[120px] rounded-full pointer-events-none"></div>
         <div className="absolute bottom-0 left-0 w-1/2 h-1/2 bg-accent/5 blur-[120px] rounded-full pointer-events-none"></div>
 
@@ -122,18 +124,9 @@ export default function Booking() {
               <div className="bg-secondary/50 rounded-xl p-6 mb-8 text-left border border-white/5">
                 <h3 className="font-medium mb-2 text-sm text-muted-foreground uppercase tracking-wider">Preparation Checklist</h3>
                 <ul className="space-y-2 text-sm">
-                  <li className="flex items-start gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5"></div>
-                    Gather current API documentation or Swagger specs
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5"></div>
-                    Compile a list of active integrations (Stripe, Auth0, etc.)
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5"></div>
-                    Note current infrastructure costs for ROI analysis
-                  </li>
+                  <li className="flex items-start gap-2"><div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5"></div>Gather current API documentation or Swagger specs</li>
+                  <li className="flex items-start gap-2"><div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5"></div>Compile a list of active integrations (Stripe, Auth0, etc.)</li>
+                  <li className="flex items-start gap-2"><div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5"></div>Note current infrastructure costs for ROI analysis</li>
                 </ul>
               </div>
               <Button onClick={() => window.location.href = "/"} variant="outline" className="border-white/10 hover:bg-white/5">
@@ -143,7 +136,6 @@ export default function Booking() {
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
               
-              {/* Left Column: Calendar & Times */}
               <div className="lg:col-span-7 flex flex-col gap-6">
                 <div className="glass-panel rounded-2xl p-6">
                   <h3 className="text-xl font-display font-semibold mb-6 flex items-center gap-2">
@@ -165,10 +157,6 @@ export default function Booking() {
                         date > addDays(today, 30)
                       }
                       className="bg-transparent"
-                      classNames={{
-                        day_today: "bg-primary/20 text-primary font-bold",
-                        day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
-                      }}
                     />
                   </div>
                 </div>
@@ -196,6 +184,7 @@ export default function Booking() {
                               ${selectedTime === time ? 'bg-accent hover:bg-accent/90 shadow-[0_0_15px_rgba(147,51,234,0.4)]' : 'hover:bg-accent/20 hover:text-accent hover:border-accent/50'}
                             `}
                             onClick={() => setSelectedTime(time)}
+                            data-testid={`btn-time-${time}`}
                           >
                             {time}
                           </Button>
@@ -210,7 +199,6 @@ export default function Booking() {
                 )}
               </div>
 
-              {/* Right Column: Form */}
               <div className="lg:col-span-5">
                 <div className={`glass-panel rounded-2xl p-6 md:p-8 transition-opacity duration-300 ${(!selectedDate || !selectedTime) ? 'opacity-50 pointer-events-none' : 'opacity-100 shadow-[0_0_30px_rgba(59,130,246,0.1)]'}`}>
                   <div className="mb-6 pb-6 border-b border-white/5">
@@ -223,12 +211,8 @@ export default function Booking() {
                       ) : (
                         <span className="italic">Please select a date and time first</span>
                       )}
-                      <Badge variant="outline" className="bg-secondary text-secondary-foreground border-white/10">
-                        45 Minutes
-                      </Badge>
-                      <Badge variant="outline" className="bg-secondary text-secondary-foreground border-white/10">
-                        Video Call
-                      </Badge>
+                      <Badge variant="outline" className="bg-secondary text-secondary-foreground border-white/10">45 Minutes</Badge>
+                      <Badge variant="outline" className="bg-secondary text-secondary-foreground border-white/10">Video Call</Badge>
                     </div>
                   </div>
 
@@ -239,33 +223,27 @@ export default function Booking() {
                         name="name"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-foreground/80 flex items-center gap-2">
-                              <User className="w-3.5 h-3.5" /> Full Name
-                            </FormLabel>
+                            <FormLabel className="text-foreground/80 flex items-center gap-2"><User className="w-3.5 h-3.5" /> Full Name</FormLabel>
                             <FormControl>
-                              <Input placeholder="Jane Doe" className="bg-background/50 border-white/10 focus-visible:border-primary" {...field} />
+                              <Input placeholder="Jane Doe" className="bg-background/50 border-white/10 focus-visible:border-primary" data-testid="input-name" {...field} />
                             </FormControl>
                             <FormMessage className="text-red-400" />
                           </FormItem>
                         )}
                       />
-
                       <FormField
                         control={form.control}
                         name="email"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-foreground/80 flex items-center gap-2">
-                              <Mail className="w-3.5 h-3.5" /> Work Email
-                            </FormLabel>
+                            <FormLabel className="text-foreground/80 flex items-center gap-2"><Mail className="w-3.5 h-3.5" /> Work Email</FormLabel>
                             <FormControl>
-                              <Input placeholder="jane@company.com" className="bg-background/50 border-white/10 focus-visible:border-primary" {...field} />
+                              <Input placeholder="jane@company.com" className="bg-background/50 border-white/10 focus-visible:border-primary" data-testid="input-email" {...field} />
                             </FormControl>
                             <FormMessage className="text-red-400" />
                           </FormItem>
                         )}
                       />
-
                       <FormField
                         control={form.control}
                         name="company"
@@ -273,40 +251,36 @@ export default function Booking() {
                           <FormItem>
                             <FormLabel className="text-foreground/80">Company (Optional)</FormLabel>
                             <FormControl>
-                              <Input placeholder="Acme Corp" className="bg-background/50 border-white/10 focus-visible:border-primary" {...field} />
+                              <Input placeholder="Acme Corp" className="bg-background/50 border-white/10 focus-visible:border-primary" data-testid="input-company" {...field} />
                             </FormControl>
                             <FormMessage className="text-red-400" />
                           </FormItem>
                         )}
                       />
-
                       <FormField
                         control={form.control}
                         name="details"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-foreground/80 flex items-center gap-2">
-                              <MessageSquare className="w-3.5 h-3.5" /> Project Context
-                            </FormLabel>
+                            <FormLabel className="text-foreground/80 flex items-center gap-2"><MessageSquare className="w-3.5 h-3.5" /> Project Context</FormLabel>
                             <FormControl>
-                              <Textarea 
-                                placeholder="Briefly describe your current architecture or the specific automation needs you're looking to address..." 
-                                className="resize-none min-h-[120px] bg-background/50 border-white/10 focus-visible:border-primary" 
-                                {...field} 
-                              />
+                              <Textarea placeholder="Briefly describe your current architecture or the specific automation needs..." className="resize-none min-h-[120px] bg-background/50 border-white/10 focus-visible:border-primary" data-testid="input-details" {...field} />
                             </FormControl>
                             <FormMessage className="text-red-400" />
                           </FormItem>
                         )}
                       />
-
                       <Button 
                         type="submit" 
                         className="w-full h-12 text-base font-medium shadow-[0_0_20px_rgba(59,130,246,0.2)] mt-4"
-                        disabled={!selectedDate || !selectedTime}
+                        disabled={!selectedDate || !selectedTime || bookingMutation.isPending}
+                        data-testid="button-submit-booking"
                       >
-                        Confirm Consultation
+                        {bookingMutation.isPending ? "Confirming..." : "Confirm Consultation"}
                       </Button>
+                      {bookingMutation.isError && (
+                        <p className="text-sm text-red-400 text-center">Something went wrong. Please try again.</p>
+                      )}
                     </form>
                   </Form>
                 </div>
