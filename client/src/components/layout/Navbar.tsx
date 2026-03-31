@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Terminal, Menu, X, Cpu, Calendar } from "lucide-react";
+import { Terminal, Menu, X, Cpu, Calendar, FlaskConical } from "lucide-react";
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -46,6 +46,12 @@ export function Navbar() {
             </>
           )}
           <a href="#" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">API Docs</a>
+          <Link href="/tests">
+            <a className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+              <FlaskConical className="w-4 h-4" />
+              Tests
+            </a>
+          </Link>
           <Button className="rounded-full px-6 font-medium bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20" variant="outline">
             Client Portal
           </Button>
@@ -78,6 +84,11 @@ export function Navbar() {
              <Link href="/"><a className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground" onClick={() => setMobileMenuOpen(false)}>Home</a></Link>
           )}
           <a href="#" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground" onClick={() => setMobileMenuOpen(false)}>API Docs</a>
+          <Link href="/tests" onClick={() => setMobileMenuOpen(false)}>
+            <a className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2">
+              <FlaskConical className="w-4 h-4" /> Tests
+            </a>
+          </Link>
           <Button className="w-full justify-start mt-2" variant="outline">Client Portal</Button>
           <Link href="/book" onClick={() => setMobileMenuOpen(false)}>
             <Button className="w-full justify-start mt-2">

@@ -10,6 +10,7 @@ import {
 } from "@shared/schema";
 import { ZodError } from "zod";
 import { requireAuth, requireAdmin, generateToken, hashPassword, seedAdminUser, type AuthenticatedRequest } from "./auth";
+import { loadCachedResults, runTests } from "./test-runner";
 
 function zodErr(error: unknown) {
   if (error instanceof ZodError) {
@@ -178,6 +179,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       totalInquiries: inquiries.length,
       openInquiries: inquiries.filter(i => !i.resolved).length,
     });
+  });
+
+  // ── Test Dashboard ───────────────────────────────────────────────────────
+  // Returns cached results from the last vitest run (reads test-results/unit-results.json)
+  app.get("/api/tests/results", (_req: Request, res: Response) => {
+    const result = loadCachedResults();
+    if (!result) {
+      return res.json({
+        runAt: null,
+        status: "no-results",
+        suites: [],
+        summary: { total: 0, pass: 0, fail: 0, skip: 0, passRate: 0 },
+        message: "No test results found. Run tests first.",
+      });
+    }
+    return res.json(result);
+  });
+
+  // Triggers a fresh vitest run and streams the final JSON back when done.
+  // Note: can take 5-10 seconds. The UI should poll /api/tests/results while this runs.
+  app.post("/api/tests/run", async (_req: Request, res: Response) => {
+    try {
+      const result = await runTests();
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ status: "error", error: err.message });
+    }
   });
 
   return httpServer;
