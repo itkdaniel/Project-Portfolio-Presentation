@@ -1,0 +1,28 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Development override — hot-reload, local ports, no nginx
+#  Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    environment:
+      NODE_ENV: development
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: npm run dev
+
+  python-service:
+    volumes:
+      - ./python-service:/app
+    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+  ai-service:
+    volumes:
+      - ./ai-service:/app
+    command: uvicorn main:app --reload --host 0.0.0.0 --port 8001

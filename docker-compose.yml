@@ -1,0 +1,164 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  NexusConsult — Full-Stack Microservices Compose
+#  Usage: docker-compose up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexus_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PGUSER:-nexus}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-nexuspassword}
+      POSTGRES_DB: ${PGDATABASE:-nexusdb}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/db-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-nexus}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  # ── Redis (caching + pub-sub) ───────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: nexus_redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redispassword} --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--pass", "${REDIS_PASSWORD:-redispassword}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  # ── Main Web Application (TypeScript/Express) ───────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nexus_web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DATABASE_URL: postgresql://${PGUSER:-nexus}:${PGPASSWORD:-nexuspassword}@postgres:5432/${PGDATABASE:-nexusdb}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redispassword}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5000/api/projects || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging: *default-logging
+
+  # ── Python FastAPI Service ──────────────────────────────────────────────────
+  python-service:
+    build:
+      context: ./python-service
+      dockerfile: Dockerfile
+    container_name: nexus_python
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${PGUSER:-nexus}:${PGPASSWORD:-nexuspassword}@postgres:5432/${PGDATABASE:-nexusdb}
+      MONGO_URL: mongodb://mongo:27017
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redispassword}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging: *default-logging
+
+  # ── AI/ML Service (PyTorch) ─────────────────────────────────────────────────
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: nexus_ai
+    restart: unless-stopped
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redispassword}@redis:6379
+      MODEL_CHECKPOINT: /app/checkpoints/latest.pt
+    ports:
+      - "8001:8001"
+    volumes:
+      - ai_checkpoints:/app/checkpoints
+    depends_on:
+      redis:
+        condition: service_healthy
+    logging: *default-logging
+
+  # ── MongoDB (for Python service document store) ─────────────────────────────
+  mongo:
+    image: mongo:7-jammy
+    container_name: nexus_mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-nexus}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-mongopassword}
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  # ── Nginx Reverse Proxy ─────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: nexus_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx_certs:/etc/nginx/certs
+    depends_on:
+      - web
+      - python-service
+      - ai-service
+    logging: *default-logging
+
+volumes:
+  postgres_data:
+  redis_data:
+  mongo_data:
+  ai_checkpoints:
+  nginx_certs:

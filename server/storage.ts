@@ -28,74 +28,57 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
+  async getUser(id: string) {
+    const [u] = await db.select().from(users).where(eq(users.id, id));
+    return u;
+  }
+  async getUserByUsername(username: string) {
+    const [u] = await db.select().from(users).where(eq(users.username, username));
+    return u;
+  }
+  async createUser(data: InsertUser) {
+    const [u] = await db.insert(users).values(data).returning();
+    return u;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
-    return user;
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values(insertUser).returning();
-    return user;
-  }
-
-  async getProjects(): Promise<Project[]> {
+  async getProjects() {
     return db.select().from(projects).orderBy(desc(projects.createdAt));
   }
-
-  async getProject(id: string): Promise<Project | undefined> {
-    const [project] = await db.select().from(projects).where(eq(projects.id, id));
-    return project;
+  async getProject(id: string) {
+    const [p] = await db.select().from(projects).where(eq(projects.id, id));
+    return p;
+  }
+  async createProject(data: InsertProject) {
+    const [p] = await db.insert(projects).values(data).returning();
+    return p;
+  }
+  async updateProject(id: string, data: Partial<InsertProject>) {
+    const [p] = await db.update(projects).set({ ...data, updatedAt: new Date() }).where(eq(projects.id, id)).returning();
+    return p;
+  }
+  async deleteProject(id: string) {
+    const r = await db.delete(projects).where(eq(projects.id, id)).returning();
+    return r.length > 0;
   }
 
-  async createProject(project: InsertProject): Promise<Project> {
-    const [created] = await db.insert(projects).values(project).returning();
-    return created;
-  }
-
-  async updateProject(id: string, data: Partial<InsertProject>): Promise<Project | undefined> {
-    const [updated] = await db
-      .update(projects)
-      .set({ ...data, updatedAt: new Date() })
-      .where(eq(projects.id, id))
-      .returning();
-    return updated;
-  }
-
-  async deleteProject(id: string): Promise<boolean> {
-    const result = await db.delete(projects).where(eq(projects.id, id)).returning();
-    return result.length > 0;
-  }
-
-  async getBookings(): Promise<Booking[]> {
+  async getBookings() {
     return db.select().from(bookings).orderBy(desc(bookings.createdAt));
   }
-
-  async createBooking(booking: InsertBooking): Promise<Booking> {
-    const [created] = await db.insert(bookings).values(booking).returning();
-    return created;
+  async createBooking(data: InsertBooking) {
+    const [b] = await db.insert(bookings).values(data).returning();
+    return b;
   }
 
-  async getInquiries(): Promise<Inquiry[]> {
+  async getInquiries() {
     return db.select().from(inquiries).orderBy(desc(inquiries.createdAt));
   }
-
-  async createInquiry(inquiry: InsertInquiry): Promise<Inquiry> {
-    const [created] = await db.insert(inquiries).values(inquiry).returning();
-    return created;
+  async createInquiry(data: InsertInquiry) {
+    const [i] = await db.insert(inquiries).values(data).returning();
+    return i;
   }
-
-  async resolveInquiry(id: string, response: string): Promise<Inquiry | undefined> {
-    const [updated] = await db
-      .update(inquiries)
-      .set({ response, resolved: true })
-      .where(eq(inquiries.id, id))
-      .returning();
-    return updated;
+  async resolveInquiry(id: string, response: string) {
+    const [i] = await db.update(inquiries).set({ response, resolved: true }).where(eq(inquiries.id, id)).returning();
+    return i;
   }
 }
 

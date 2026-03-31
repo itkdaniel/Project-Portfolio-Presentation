@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexus-python
+  namespace: nexusconsult
+  labels:
+    app: nexus-python
+    tier: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nexus-python
+  template:
+    metadata:
+      labels:
+        app: nexus-python
+    spec:
+      containers:
+        - name: python-service
+          image: ghcr.io/YOUR_ORG/nexusconsult/python-service:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nexus-secrets
+                  key: python-database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nexus-secrets
+                  key: redis-url
+            - name: MONGO_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nexus-secrets
+                  key: mongo-url
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: nexus-secrets
+                  key: jwt-secret
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nexus-python-svc
+  namespace: nexusconsult
+spec:
+  selector:
+    app: nexus-python
+  ports:
+    - port: 8000
+      targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nexus-python-hpa
+  namespace: nexusconsult
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nexus-python
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

@@ -1,6 +1,6 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { Server } from "http";
-import { log } from "./index";
+import { log } from "./logger";
 
 type EventType = "project:created" | "project:updated" | "project:deleted" | "booking:created" | "inquiry:created";
 
