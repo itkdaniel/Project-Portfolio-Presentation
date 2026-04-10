@@ -181,6 +181,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
+  // ── User Corp-Role Management ─────────────────────────────────────────────
+  app.patch("/api/users/role", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { email, corpRoleId } = req.body as { email: string; corpRoleId: number };
+      if (!email || typeof corpRoleId !== "number" || corpRoleId < 1 || corpRoleId > 8) {
+        return res.status(400).json({ message: "email and corpRoleId (1–8) are required" });
+      }
+      const [updated] = await db
+        .update(users)
+        .set({ corpRoleId })
+        .where(eq(users.email, email))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "User not found" });
+      return res.json({ id: updated.id, email: updated.email, corpRoleId: updated.corpRoleId });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
   // ── Test Dashboard ───────────────────────────────────────────────────────
   // Returns cached results from the last vitest run (reads test-results/unit-results.json)
   app.get("/api/tests/results", (_req: Request, res: Response) => {

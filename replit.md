@@ -49,10 +49,13 @@ Full-stack automation consulting platform with a dark "Tech Professional" aesthe
 - `GET /api/admin/stats` — admin dashboard stats
 
 ### RBAC
-- Roles: `admin`, `user` (pgEnum)
+- Platform roles: `admin`, `user` (pgEnum)
+- Corporate roles: 8-level hierarchy (`user` → `creator`, IDs 1–8) in `corp_roles` table
+- Data ratings: 7-tier system (`G` → `None`) in `data_ratings` table — controls CLI data access
 - JWT payload includes `sub` (user ID) + `role`
 - `requireAuth` middleware verifies HMAC signature + 24h expiry
 - `requireAdmin` chains requireAuth + role check
+- `PATCH /api/users/role` — admin-only endpoint to update a user's corporate role
 
 ### WebSocket Pub/Sub
 - Events: `project:created`, `project:updated`, `project:deleted`, `booking:created`, `inquiry:created`
@@ -68,14 +71,40 @@ Full-stack automation consulting platform with a dark "Tech Professional" aesthe
 - `.github/workflows/ci.yml` — Node tests → Python tests → E2E → Docker build
 - `.github/workflows/deploy.yml` — Build → push GHCR → K8s deploy → Slack notify
 
-### Testing
+### Testing (54 passing)
 - `tests/unit/auth.test.ts` — hashPassword + generateToken unit tests
 - `tests/unit/schema.test.ts` — Zod schema validation unit tests
 - `tests/unit/api.test.ts` — Full API integration tests (login, CRUD, RBAC)
+- `tests/unit/roles.test.ts` — Corporate role hierarchy + data rating access matrix + PATCH /api/users/role
+- `tests/unit/portfolio.test.ts` — Full portfolio CRUD, publish/feature, parallel creates
 - `tests/regression/backwards-compat.test.ts` — Contract stability regression tests
 - `tests/e2e/booking.spec.ts` — Playwright E2E browser tests
-- `vitest.config.ts` — Configured with include/exclude patterns, coverage
-- `playwright.config.ts` — Chromium, webServer auto-start, artifacts
+- `vitest.config.ts` — Configured with include/exclude patterns, JSON reporter
+- `playwright.config.ts` — Chromium, webServer auto-start, screenshots/traces/video
+
+### Test Dashboard
+- `/tests` page — color-coded pass/fail/skip badges, suite cards with expandable tracebacks, filter controls
+- `GET /api/tests/results` — returns cached latest vitest JSON output
+- `POST /api/tests/run` — triggers a fresh vitest run and returns results
+
+### CLI Tools
+#### Python CLI (`cli/python/`)
+- Entry: `python nexus_cli.py` (requires `pip install click rich httpx`)
+- 7 command groups: `auth`, `api`, `infra`, `portfolio`, `data`, `model`, `ai`
+- `auth`: login, logout, whoami, token, roles, set-role
+- `api`: get, post, patch, delete, batch (parallel), endpoints
+- `infra`: start, stop, restart, scale, status, logs, cleanup, build, k8s
+- `portfolio`: list, add, update, remove, publish, unpublish, feature, export
+- `data`: ratings, check, scrape, preprocess, build, validate, formats (role-gated)
+- `model`: list, train, validate, save, load, deploy, export
+- `ai`: classify, embed, similarity, fill-mask, search, status
+
+#### Go CLI (`cli/go/`)
+- Entry: `go build -o nexus . && ./nexus` (from `cli/go/`)
+- Identical command structure via cobra
+- `internal/roles/roles.go` — role hierarchy + CanAccessRating logic
+- `internal/config/config.go` — config load/save (~/.nexus/config.json + env overrides)
+- `internal/client/http.go` — sync/parallel HTTP with goroutines (`ParallelGet`)
 
 ### Python FastAPI Service
 - `app/main.py` — FastAPI with lifespan, CORS, structured logging
@@ -113,10 +142,38 @@ Full-stack automation consulting platform with a dark "Tech Professional" aesthe
 
 ## Run Commands
 ```bash
-npm run dev          # dev server
-npm run db:push      # sync schema
-npx tsx scripts/seed-projects.ts  # seed data
-npm run test:unit    # unit + integration tests
-npm run test:e2e     # playwright E2E
-npm run test:coverage # coverage report
+npm run dev                         # dev server (port 5000)
+npm run db:push                     # sync schema to DB
+npx tsx scripts/seed-projects.ts    # seed 6 sample projects
+npx tsx scripts/seed-roles.ts       # seed 8 corp roles + 7 data ratings
+npm run test:unit                   # vitest unit + integration (54 tests)
+npm run test:e2e                    # playwright E2E
+npm run test:coverage               # coverage report
+```
+
+### Python CLI
+```bash
+pip install click rich httpx        # one-time install
+cd cli/python
+python nexus_cli.py --help          # top-level help
+python nexus_cli.py auth login      # authenticate
+python nexus_cli.py portfolio list  # list projects
+python nexus_cli.py data ratings    # show data tiers
+python nexus_cli.py data check R    # check role access
+python nexus_cli.py model train data/corpus  # train a model
+python nexus_cli.py ai search "auth service" # semantic search
+```
+
+### Go CLI
+```bash
+cd cli/go
+go mod tidy                         # install dependencies
+go build -o nexus .                 # compile binary
+./nexus --help                      # top-level help
+./nexus auth login                  # authenticate
+./nexus portfolio list              # list projects
+./nexus data ratings --code R       # show R-tier sources
+./nexus infra start                 # start Docker services
+./nexus ai status                   # check AI services
+./nexus api batch /api/projects /api/auth/me  # parallel fetch
 ```
