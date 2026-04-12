@@ -23,6 +23,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Lowercase repository name
+        run: echo "REPO_LC=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -37,7 +40,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}/web
+          images: ghcr.io/${{ env.REPO_LC }}/web
           tags: |
             type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
@@ -57,7 +60,7 @@ jobs:
         with:
           context: ./python-service
           push: true
-          tags: ghcr.io/${{ github.repository }}/python-service:latest
+          tags: ghcr.io/${{ env.REPO_LC }}/python-service:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -68,8 +71,8 @@ jobs:
           action: deploy
           manifests: k8s/
           images: |
-            ghcr.io/${{ github.repository }}/web:sha-${{ github.sha }}
-            ghcr.io/${{ github.repository }}/python-service:latest
+            ghcr.io/${{ env.REPO_LC }}/web:sha-${{ github.sha }}
+            ghcr.io/${{ env.REPO_LC }}/python-service:latest
         env:
           KUBECONFIG_DATA: ${{ secrets.KUBECONFIG_DATA }}
 
