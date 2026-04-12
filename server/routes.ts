@@ -105,10 +105,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/projects/:id", requireAdmin as any, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const existing = await storage.getProject(req.params.id);
+      const existing = await storage.getProject(req.params.id as string);
       if (!existing) return res.status(404).json({ message: "Project not found" });
       const data = insertProjectSchema.partial().parse(req.body);
-      const updated = await storage.updateProject(req.params.id, data);
+      const updated = await storage.updateProject(req.params.id as string, data);
       pubsub.publish("project:updated", updated);
       return res.json(updated);
     } catch (e) {
@@ -118,7 +118,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.delete("/api/projects/:id", requireAdmin as any, async (req: AuthenticatedRequest, res: Response) => {
-    const deleted = await storage.deleteProject(req.params.id);
+    const deleted = await storage.deleteProject(req.params.id as string);
     if (!deleted) return res.status(404).json({ message: "Project not found" });
     pubsub.publish("project:deleted", { id: req.params.id });
     return res.json({ message: "Project deleted" });
@@ -177,7 +177,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/inquiries/:id/resolve", requireAdmin as any, async (req: AuthenticatedRequest, res: Response) => {
     const { response } = req.body;
     if (!response) return res.status(400).json({ message: "Response is required" });
-    const updated = await storage.resolveInquiry(req.params.id, response);
+    const updated = await storage.resolveInquiry(req.params.id as string, response);
     if (!updated) return res.status(404).json({ message: "Inquiry not found" });
     return res.json(updated);
   });

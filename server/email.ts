@@ -6,6 +6,7 @@
 
 import { db } from "./db";
 import { emailConfig } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import { log } from "./logger";
 import type { Booking } from "@shared/schema";
 
@@ -285,7 +286,7 @@ export async function updateEmailConfig(updates: Partial<typeof emailConfig.$inf
   const [updated] = await db
     .update(emailConfig)
     .set({ ...updates, updatedAt: new Date() })
-    .where((t: any) => t.id.equals ? t.id.equals(cfg.id) : true)
+    .where(eq(emailConfig.id, cfg!.id))
     .returning();
   return updated;
 }

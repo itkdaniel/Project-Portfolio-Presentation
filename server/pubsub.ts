@@ -51,7 +51,7 @@ class PubSubManager {
     const data = JSON.stringify(message);
     let delivered = 0;
 
-    for (const client of this.clients) {
+    for (const client of Array.from(this.clients)) {
       if (client.readyState === WebSocket.OPEN) {
         client.send(data);
         delivered++;

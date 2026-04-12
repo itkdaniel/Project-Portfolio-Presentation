@@ -68,7 +68,7 @@ function fmtDate(iso: string | null) {
 
 // ── Status Badge ──────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: TestCase["status"] | "no-results" | "error" }) {
+function StatusBadge({ status }: { status: TestCase["status"] | "no-results" | "error" | "running" }) {
   const map: Record<string, { bg: string; text: string; dot: string; label: string }> = {
     pass:       { bg: "bg-emerald-500/10 border border-emerald-500/30", text: "text-emerald-400", dot: "bg-emerald-400", label: "PASS" },
     fail:       { bg: "bg-red-500/10 border border-red-500/30",         text: "text-red-400",     dot: "bg-red-400",     label: "FAIL" },

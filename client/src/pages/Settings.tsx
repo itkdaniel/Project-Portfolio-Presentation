@@ -354,7 +354,7 @@ function NotificationsSection({ settings, onSave, saving }: { settings: UserSett
         ].map(item => (
           <NotifRow key={item.key} id={item.key} label={item.label} description={item.desc}
             checked={form[item.key]} onChange={() => toggle(item.key)}
-            disabled={!form.emailNotifications && item.key !== "emailNotifications"} />
+            disabled={!form.emailNotifications && (item.key as string) !== "emailNotifications"} />
         ))}
       </div>
       <SaveButton onClick={() => onSave(form)} saving={saving} />
