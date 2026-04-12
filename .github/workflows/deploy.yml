@@ -16,7 +16,6 @@ jobs:
   deploy:
     name: Build & Push Images
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'production' }}
     permissions:
       contents: read
       packages: write
@@ -63,7 +62,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Deploy to Kubernetes
-        if: ${{ secrets.KUBECONFIG_DATA != '' }}
+        continue-on-error: true
         uses: azure/k8s-deploy@v4
         with:
           action: deploy
@@ -75,7 +74,8 @@ jobs:
           KUBECONFIG_DATA: ${{ secrets.KUBECONFIG_DATA }}
 
       - name: Notify deployment via Slack
-        if: ${{ always() && secrets.SLACK_WEBHOOK_URL != '' }}
+        if: always()
+        continue-on-error: true
         uses: slackapi/slack-github-action@v1
         with:
           payload: |

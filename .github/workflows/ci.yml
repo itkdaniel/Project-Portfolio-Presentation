@@ -52,15 +52,20 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
+      - name: Apply database schema
+        run: npx drizzle-kit push --force
+        env:
+          DATABASE_URL: postgresql://nexus:nexuspassword@localhost:5432/nexustest
+
       - name: Run unit & regression tests
         run: npx vitest run tests/unit tests/regression --reporter=verbose
 
-      - name: Upload coverage
+      - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: node-coverage
-          path: coverage/
+          name: node-test-results
+          path: test-results/
 
   # ── Python tests ─────────────────────────────────────────────────────────
   test-python:
@@ -125,7 +130,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build web image (no push)
+      - name: Build web image (validate only)
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -134,7 +139,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build Python service image (no push)
+      - name: Build Python service image (validate only)
         uses: docker/build-push-action@v5
         with:
           context: ./python-service
