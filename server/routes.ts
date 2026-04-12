@@ -7,10 +7,17 @@ import { db } from "./db";
 import { users } from "@shared/schema";
 import {
   insertProjectSchema, insertBookingSchema, insertInquirySchema, loginSchema,
+  updateUserSettingsSchema, updateEmailConfigSchema,
 } from "@shared/schema";
 import { ZodError } from "zod";
 import { requireAuth, requireAdmin, generateToken, hashPassword, seedAdminUser, type AuthenticatedRequest } from "./auth";
 import { loadCachedResults, runTests } from "./test-runner";
+import {
+  sendBookingConfirmationToUser,
+  sendBookingNotificationToAdmin,
+  sendTestEmail,
+  getEmailConfig,
+} from "./email";
 
 function zodErr(error: unknown) {
   if (error instanceof ZodError) {
@@ -129,6 +136,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const data = insertBookingSchema.parse(req.body);
       const booking = await storage.createBooking(data);
       pubsub.publish("booking:created", booking);
+
+      // Fire-and-forget email notifications
+      const cfg = await getEmailConfig();
+      if (cfg?.enabled) {
+        if (cfg.sendUserConfirmation) {
+          sendBookingConfirmationToUser(booking).catch(() => {});
+        }
+        if (cfg.sendAdminNotification) {
+          sendBookingNotificationToAdmin(booking).catch(() => {});
+        }
+      }
+
       return res.status(201).json(booking);
     } catch (e) {
       const { status, body } = zodErr(e);
@@ -161,6 +180,80 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const updated = await storage.resolveInquiry(req.params.id, response);
     if (!updated) return res.status(404).json({ message: "Inquiry not found" });
     return res.json(updated);
+  });
+
+  // ── Settings ─────────────────────────────────────────────────────────────
+
+  // GET  /api/settings          — get current user's settings (auto-create on first access)
+  app.get("/api/settings", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user!.id;
+    let s = await storage.getUserSettings(userId);
+    if (!s) {
+      s = await storage.upsertUserSettings(userId, {});
+    }
+    return res.json(s);
+  });
+
+  // PATCH /api/settings          — update current user's settings
+  app.patch("/api/settings", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const data = updateUserSettingsSchema.parse(req.body);
+      const updated = await storage.upsertUserSettings(userId, data);
+      return res.json(updated);
+    } catch (e) {
+      const { status, body } = zodErr(e);
+      return res.status(status).json(body);
+    }
+  });
+
+  // GET  /api/settings/email-config  — admin: get email configuration
+  app.get("/api/settings/email-config", requireAdmin as any, async (_req, res) => {
+    let cfg = await storage.getEmailConfig();
+    if (!cfg) {
+      cfg = await storage.upsertEmailConfig({});
+    }
+    return res.json(cfg);
+  });
+
+  // PATCH /api/settings/email-config  — admin: update email configuration
+  app.patch("/api/settings/email-config", requireAdmin as any, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const data = updateEmailConfigSchema.parse(req.body);
+      const updated = await storage.upsertEmailConfig(data);
+      return res.json(updated);
+    } catch (e) {
+      const { status, body } = zodErr(e);
+      return res.status(status).json(body);
+    }
+  });
+
+  // POST /api/settings/change-password  — authenticated user changes their own password
+  app.post("/api/settings/change-password", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "currentPassword and newPassword are required" });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: "New password must be at least 8 characters" });
+    }
+    const user = await storage.getUser(req.user!.id);
+    if (!user || user.password !== hashPassword(currentPassword)) {
+      return res.status(401).json({ message: "Current password is incorrect" });
+    }
+    await storage.updateUserPassword(user.id, hashPassword(newPassword));
+    return res.json({ message: "Password updated successfully" });
+  });
+
+  // POST /api/settings/test-email  — admin: send a test email
+  app.post("/api/settings/test-email", requireAdmin as any, async (req: AuthenticatedRequest, res: Response) => {
+    const { to } = req.body;
+    if (!to) return res.status(400).json({ message: "to (email address) is required" });
+    const result = await sendTestEmail(to);
+    if (!result.success) {
+      return res.status(500).json({ message: result.error ?? "Failed to send test email", mode: result.mode });
+    }
+    return res.json({ message: "Test email sent", mode: result.mode, messageId: result.messageId });
   });
 
   // ── Admin Dashboard ────────────────────────────────────────────────────

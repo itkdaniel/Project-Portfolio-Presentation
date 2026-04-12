@@ -1,5 +1,8 @@
 import { Cpu, Github, Linkedin, Twitter, Mail } from "lucide-react";
 
+const GITHUB_URL   = "https://github.com/itkdaniel";
+const LINKEDIN_URL = "https://linkedin.com/in/itkdaniel";
+
 export function Footer() {
   return (
     <footer className="bg-card/30 border-t border-white/5 pt-16 pb-8">
@@ -16,12 +19,36 @@ export function Footer() {
               Designing scalable microservice architectures, robust CRUD APIs, and end-to-end automation solutions for forward-thinking enterprises.
             </p>
             <div className="flex items-center gap-4">
-              <a href="#" className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-white/5"><Github className="w-4 h-4" /></a>
-              <a href="#" className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-white/5"><Linkedin className="w-4 h-4" /></a>
-              <a href="#" className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-white/5"><Twitter className="w-4 h-4" /></a>
+              <a
+                href={GITHUB_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="GitHub"
+                data-testid="footer-github"
+                className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-white/5"
+              >
+                <Github className="w-4 h-4" />
+              </a>
+              <a
+                href={LINKEDIN_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="LinkedIn"
+                data-testid="footer-linkedin"
+                className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-white/5"
+              >
+                <Linkedin className="w-4 h-4" />
+              </a>
+              <a
+                href="#"
+                aria-label="Twitter"
+                className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-white/5"
+              >
+                <Twitter className="w-4 h-4" />
+              </a>
             </div>
           </div>
-          
+
           <div>
             <h4 className="font-display font-semibold mb-4 text-foreground">Infrastructure</h4>
             <ul className="space-y-3">
@@ -31,18 +58,18 @@ export function Footer() {
               <li><a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">CI/CD Pipelines</a></li>
             </ul>
           </div>
-          
+
           <div>
             <h4 className="font-display font-semibold mb-4 text-foreground">Client Portal</h4>
             <ul className="space-y-3">
               <li><a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">Project Dashboard</a></li>
               <li><a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">API Keys</a></li>
               <li><a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">Usage Analytics</a></li>
-              <li><a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">Support Automation</a></li>
+              <li><a href="/settings" className="text-sm text-muted-foreground hover:text-primary transition-colors">Settings</a></li>
             </ul>
           </div>
         </div>
-        
+
         <div className="border-t border-white/5 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-xs text-muted-foreground">
             © {new Date().getFullYear()} Nexus Consulting. All rights reserved.

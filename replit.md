@@ -71,12 +71,30 @@ Full-stack automation consulting platform with a dark "Tech Professional" aesthe
 - `.github/workflows/ci.yml` — Node tests → Python tests → E2E → Docker build
 - `.github/workflows/deploy.yml` — Build → push GHCR → K8s deploy → Slack notify
 
-### Testing (54 passing)
+### Settings System
+- `shared/schema.ts` — `userSettings` (per-user UPSERT) + `emailConfig` (single-row admin config)
+- `server/email.ts` — Nodemailer-based email service; dark HTML templates; console fallback when SMTP off
+- `server/storage.ts` — getUserSettings, upsertUserSettings, getEmailConfig, upsertEmailConfig
+- `GET/PATCH /api/settings` — authenticated user settings (profile, appearance, notifications)
+- `GET/PATCH /api/settings/email-config` — admin SMTP config + social/branding links
+- `POST /api/settings/change-password` — authenticated password change with verification
+- `POST /api/settings/test-email` — admin test email (logs to console when SMTP disabled)
+- Booking emails fire-and-forget on `POST /api/bookings` (when SMTP enabled)
+- `/settings` page — 6-section sidebar: Profile, Notifications, Appearance, Security, Email Config, Integrations
+
+### Frontend
+- `client/src/pages/Settings.tsx` — full settings UI with sidebar nav + mutation hooks
+- `client/src/components/layout/Navbar.tsx` — fixed nested anchor bug; added Settings link
+- `client/src/components/layout/Footer.tsx` — real GitHub/LinkedIn URLs (github.com/itkdaniel, linkedin.com/in/itkdaniel)
+- `client/src/App.tsx` — added `/settings` route
+
+### Testing (77 passing)
 - `tests/unit/auth.test.ts` — hashPassword + generateToken unit tests
 - `tests/unit/schema.test.ts` — Zod schema validation unit tests
 - `tests/unit/api.test.ts` — Full API integration tests (login, CRUD, RBAC)
 - `tests/unit/roles.test.ts` — Corporate role hierarchy + data rating access matrix + PATCH /api/users/role
 - `tests/unit/portfolio.test.ts` — Full portfolio CRUD, publish/feature, parallel creates
+- `tests/unit/settings.test.ts` — Settings CRUD, email config, change-password, test-email (23 tests)
 - `tests/regression/backwards-compat.test.ts` — Contract stability regression tests
 - `tests/e2e/booking.spec.ts` — Playwright E2E browser tests
 - `vitest.config.ts` — Configured with include/exclude patterns, JSON reporter

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, pgEnum, integer, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, pgEnum, integer, serial, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -117,3 +117,81 @@ export const insertInquirySchema = createInsertSchema(inquiries)
   .extend({ message: z.string().min(1, "Message cannot be empty") });
 export type InsertInquiry = z.infer<typeof insertInquirySchema>;
 export type Inquiry = typeof inquiries.$inferSelect;
+
+// ── User Settings ──────────────────────────────────────────────────────────
+// One row per user, created on first access via upsert.
+export const userSettings = pgTable("user_settings", {
+  id:        serial("id").primaryKey(),
+  userId:    varchar("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+
+  // Profile
+  displayName:  text("display_name"),
+  bio:          text("bio"),
+  avatarUrl:    text("avatar_url"),
+  githubUrl:    text("github_url"),
+  linkedinUrl:  text("linkedin_url"),
+  websiteUrl:   text("website_url"),
+  timezone:     text("timezone").notNull().default("UTC"),
+  language:     text("language").notNull().default("en"),
+
+  // Appearance
+  theme:            text("theme").notNull().default("dark"),
+  compactMode:      boolean("compact_mode").notNull().default(false),
+  sidebarCollapsed: boolean("sidebar_collapsed").notNull().default(false),
+
+  // Notification preferences
+  emailNotifications:    boolean("email_notifications").notNull().default(true),
+  notifyBookingConfirm:  boolean("notify_booking_confirm").notNull().default(true),
+  notifyNewBooking:      boolean("notify_new_booking").notNull().default(true),
+  notifyNewInquiry:      boolean("notify_new_inquiry").notNull().default(true),
+  notifyProjectUpdates:  boolean("notify_project_updates").notNull().default(false),
+  notifyWeeklyDigest:    boolean("notify_weekly_digest").notNull().default(false),
+  notifySecurityAlerts:  boolean("notify_security_alerts").notNull().default(true),
+
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertUserSettingsSchema = createInsertSchema(userSettings).omit({ id: true, updatedAt: true });
+export const updateUserSettingsSchema = insertUserSettingsSchema.partial().omit({ userId: true });
+export type InsertUserSettings = z.infer<typeof insertUserSettingsSchema>;
+export type UpdateUserSettings = z.infer<typeof updateUserSettingsSchema>;
+export type UserSettings = typeof userSettings.$inferSelect;
+
+// ── Email Configuration ────────────────────────────────────────────────────
+// Single admin-controlled row for SMTP / email provider configuration.
+export const emailConfig = pgTable("email_config", {
+  id:           serial("id").primaryKey(),
+
+  // SMTP credentials
+  smtpHost:     text("smtp_host").notNull().default(""),
+  smtpPort:     integer("smtp_port").notNull().default(587),
+  smtpSecure:   boolean("smtp_secure").notNull().default(false),
+  smtpUser:     text("smtp_user").notNull().default(""),
+  smtpPassword: text("smtp_password").notNull().default(""),
+
+  // Sender identity
+  fromName:     text("from_name").notNull().default("NexusConsult"),
+  fromEmail:    text("from_email").notNull().default("noreply@nexusconsult.dev"),
+
+  // Routing
+  adminEmail:   text("admin_email").notNull().default("admin@nexusconsult.dev"),
+  replyTo:      text("reply_to"),
+
+  // Feature toggles
+  enabled:                boolean("enabled").notNull().default(false),
+  sendUserConfirmation:   boolean("send_user_confirmation").notNull().default(true),
+  sendAdminNotification:  boolean("send_admin_notification").notNull().default(true),
+
+  // Social / branding links embedded in email templates
+  githubUrl:    text("github_url").notNull().default("https://github.com/itkdaniel"),
+  linkedinUrl:  text("linkedin_url").notNull().default("https://linkedin.com/in/itkdaniel"),
+  websiteUrl:   text("website_url").notNull().default("https://nexusconsult.dev"),
+
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertEmailConfigSchema = createInsertSchema(emailConfig).omit({ id: true, updatedAt: true });
+export const updateEmailConfigSchema = insertEmailConfigSchema.partial();
+export type InsertEmailConfig = z.infer<typeof insertEmailConfigSchema>;
+export type UpdateEmailConfig = z.infer<typeof updateEmailConfigSchema>;
+export type EmailConfig = typeof emailConfig.$inferSelect;
