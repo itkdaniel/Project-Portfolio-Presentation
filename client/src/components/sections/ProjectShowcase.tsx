@@ -70,8 +70,8 @@ export function ProjectShowcase() {
         </div>
 
         <Tabs value={currentTab} onValueChange={setActiveTab} className="w-full">
-          <div className="flex justify-center mb-12">
-            <TabsList className="bg-card/50 border border-white/5 p-1 h-auto rounded-full max-w-full overflow-x-auto flex-nowrap hide-scrollbar">
+          <div className="overflow-x-auto hide-scrollbar mb-12">
+            <TabsList className="bg-card/50 border border-white/5 p-1 h-auto rounded-full w-max mx-auto flex-nowrap">
               {activeProjects.map(p => (
                 <TabsTrigger 
                   key={p.id} 
