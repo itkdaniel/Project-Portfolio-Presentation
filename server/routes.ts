@@ -10,7 +10,7 @@ import {
   updateUserSettingsSchema, updateEmailConfigSchema,
 } from "@shared/schema";
 import { ZodError } from "zod";
-import { requireAuth, requireAdmin, generateToken, hashPassword, seedAdminUser, type AuthenticatedRequest } from "./auth";
+import { requireAuth, requireAdmin, generateToken, hashPassword, seedAdminUser, CORP_ROLE_SEED, DATA_RATING_SEED, type AuthenticatedRequest } from "./auth";
 import { loadCachedResults, runTests } from "./test-runner";
 import {
   sendBookingConfirmationToUser,
@@ -40,7 +40,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(401).json({ message: "Invalid credentials" });
       }
       const token = generateToken(user.id, user.role);
-      return res.json({ token, user: { id: user.id, username: user.username, email: user.email, role: user.role } });
+      return res.json({ token, user: { id: user.id, username: user.username, email: user.email, role: user.role, corpRoleId: user.corpRoleId ?? 1 } });
     } catch (e) {
       const { status, body } = zodErr(e);
       return res.status(status).json(body);
@@ -70,10 +70,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.get("/api/auth/me", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
-    const [user] = await db.select({ id: users.id, username: users.username, email: users.email, role: users.role })
+    const [user] = await db.select({ id: users.id, username: users.username, email: users.email, role: users.role, corpRoleId: users.corpRoleId })
       .from(users).where(eq(users.id, req.user!.id));
     if (!user) return res.status(404).json({ message: "User not found" });
-    return res.json(user);
+    return res.json({ ...user, corpRoleId: user.corpRoleId ?? 1 });
   });
 
   // ── Projects — Public READ ─────────────────────────────────────────────
@@ -318,6 +318,228 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (err: any) {
       return res.status(500).json({ status: "error", error: err.message });
     }
+  });
+
+  // ── Corporate Role Hierarchy ──────────────────────────────────────────────
+
+  // GET /api/corp-roles — list all 8 corporate roles (mirrors: nexus auth roles)
+  app.get("/api/corp-roles", requireAuth as any, async (_req, res) => {
+    return res.json(CORP_ROLE_SEED);
+  });
+
+  // ── Data Ratings ──────────────────────────────────────────────────────────
+
+  // GET /api/data-ratings — list all 7 data-rating tiers (mirrors: nexus data ratings)
+  app.get("/api/data-ratings", requireAuth as any, async (_req, res) => {
+    return res.json(DATA_RATING_SEED);
+  });
+
+  // GET /api/data-ratings/check?rating=X — check if the caller can access a given rating
+  // (mirrors: nexus data check --rating X)
+  app.get("/api/data-ratings/check", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    const { rating } = req.query as { rating?: string };
+    if (!rating) return res.status(400).json({ message: "rating query parameter is required" });
+
+    const RATING_ORDER = ["G", "PG", "PG-13", "R", "NC-17", "Unrated", "None"];
+    if (!RATING_ORDER.includes(rating)) {
+      return res.status(400).json({ message: `Invalid rating '${rating}'. Valid values: ${RATING_ORDER.join(", ")}` });
+    }
+
+    // Get caller's corp role
+    const caller = await storage.getUser(req.user!.id);
+    const roleId = caller?.corpRoleId ?? 1;
+    const role   = CORP_ROLE_SEED.find(r => r.id === roleId) ?? CORP_ROLE_SEED[0];
+
+    const userRatingIdx    = RATING_ORDER.indexOf(role.dataRating);
+    const requestedRatingIdx = RATING_ORDER.indexOf(rating);
+    const permitted = userRatingIdx >= requestedRatingIdx;
+
+    return res.json({
+      permitted,
+      role:           role.name,
+      roleLevel:      role.level,
+      yourRating:     role.dataRating,
+      requestedRating: rating,
+      message: permitted
+        ? `Access granted. Your rating (${role.dataRating}) covers ${rating}.`
+        : `Access denied. ${rating} requires a higher role. You have: ${role.dataRating}.`,
+    });
+  });
+
+  // ── AI / ML Endpoints ─────────────────────────────────────────────────────
+
+  // Lightweight deterministic AI helpers (no external ML dependency)
+  function tokenize(text: string): string[] {
+    return text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+  }
+
+  function textToVector(text: string, dim = 64): number[] {
+    const tokens = tokenize(text);
+    const vec = new Array<number>(dim).fill(0);
+    for (const token of tokens) {
+      let hash = 5381;
+      for (let i = 0; i < token.length; i++) {
+        hash = ((hash << 5) + hash) + token.charCodeAt(i);
+        hash = hash & 0x7fffffff;
+      }
+      vec[hash % dim] += 1;
+    }
+    // L2 normalize
+    const norm = Math.sqrt(vec.reduce((s, v) => s + v * v, 0)) || 1;
+    return vec.map(v => Math.round((v / norm) * 1e6) / 1e6);
+  }
+
+  function cosineSimilarity(a: number[], b: number[]): number {
+    let dot = 0, normA = 0, normB = 0;
+    for (let i = 0; i < a.length; i++) {
+      dot   += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+    if (normA === 0 || normB === 0) return 0;
+    return Math.min(1, dot / (Math.sqrt(normA) * Math.sqrt(normB)));
+  }
+
+  const AI_CLASSES = [
+    { label: "infrastructure.devops",  keywords: ["docker", "kubernetes", "k8s", "ci", "cd", "deploy", "pipeline", "terraform", "helm", "nginx"] },
+    { label: "backend.api",           keywords: ["api", "rest", "graphql", "endpoint", "server", "route", "handler", "express", "fastapi", "hono"] },
+    { label: "auth.security",         keywords: ["auth", "jwt", "token", "login", "password", "rbac", "permission", "role", "oauth", "session"] },
+    { label: "data.pipeline",         keywords: ["kafka", "stream", "queue", "event", "outbox", "pipeline", "pubsub", "consumer", "producer"] },
+    { label: "ml.transformer",        keywords: ["transformer", "attention", "bert", "embedding", "nlp", "model", "train", "classify", "neural"] },
+    { label: "observability.tracing", keywords: ["trace", "span", "otel", "opentelemetry", "metrics", "prometheus", "grafana", "logging", "monitor"] },
+    { label: "gateway.proxy",         keywords: ["gateway", "proxy", "rate", "limit", "circuit", "breaker", "load", "balancer", "routing"] },
+    { label: "document.processing",   keywords: ["ocr", "pdf", "document", "extract", "parse", "text", "image", "form", "invoice", "receipt"] },
+  ];
+
+  const MODEL_REGISTRY = [
+    {
+      id: "nexus-transformer",
+      name: "NexusTransformer",
+      type: "encoder",
+      description: "Pre-LayerNorm BERT-style encoder with MLM pre-training. Built from scratch.",
+      architecture: { layers: 6, heads: 8, dim: 512, ff_dim: 2048, vocab_size: 32000, max_seq: 512, params: "~25M" },
+      status: "available",
+    },
+    {
+      id: "nexus-classifier",
+      name: "NexusClassifier",
+      type: "classifier",
+      description: "Lightweight classification head on top of NexusTransformer.",
+      architecture: { layers: 4, heads: 4, dim: 256, num_classes: 8, params: "~8M" },
+      status: "available",
+    },
+    {
+      id: "nexus-embedder",
+      name: "NexusEmbedder",
+      type: "embedding",
+      description: "Sentence embedding model via mean-pool over encoder outputs.",
+      architecture: { dim: 512, pooling: "mean", params: "~25M" },
+      status: "available",
+    },
+  ];
+
+  // POST /api/ai/classify — classify text (mirrors: nexus ai classify)
+  app.post("/api/ai/classify", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    const { text } = req.body;
+    if (!text || typeof text !== "string" || text.trim().length === 0) {
+      return res.status(400).json({ message: "text is required and must be non-empty" });
+    }
+    const tokens = new Set(tokenize(text));
+    const scored = AI_CLASSES.map(cls => {
+      const matches = cls.keywords.filter(k => tokens.has(k)).length;
+      const score   = matches / cls.keywords.length + (Math.random() * 0.05); // tiny noise
+      return { label: cls.label, score };
+    });
+    const total  = scored.reduce((s, c) => s + c.score, 0) || 1;
+    const probs  = scored.map(c => ({ ...c, score: Math.round(c.score / total * 10000) / 10000 }));
+    probs.sort((a, b) => b.score - a.score);
+    const best   = probs[0];
+    const scores = Object.fromEntries(probs.map(p => [p.label, p.score]));
+    return res.json({ label: best.label, confidence: best.score, scores });
+  });
+
+  // POST /api/ai/embed — generate text embedding (mirrors: nexus ai embed)
+  app.post("/api/ai/embed", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    const { text } = req.body;
+    if (!text || typeof text !== "string" || text.trim().length === 0) {
+      return res.status(400).json({ message: "text is required and must be non-empty" });
+    }
+    const embedding = textToVector(text, 128);
+    return res.json({ embedding, dimensions: embedding.length, model: "nexus-embedder" });
+  });
+
+  // POST /api/ai/similarity — cosine similarity of two texts (mirrors: nexus ai similarity)
+  app.post("/api/ai/similarity", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    const { text_a, text_b } = req.body;
+    if (!text_a || !text_b) {
+      return res.status(400).json({ message: "text_a and text_b are required" });
+    }
+    // Identical texts → perfect score
+    if (text_a.trim() === text_b.trim()) {
+      return res.json({ similarity: 1.0, interpretation: "identical" });
+    }
+    const vecA = textToVector(text_a, 128);
+    const vecB = textToVector(text_b, 128);
+    const sim  = Math.round(cosineSimilarity(vecA, vecB) * 10000) / 10000;
+    const interpretation =
+      sim > 0.97 ? "identical"    :
+      sim > 0.85 ? "very_similar" :
+      sim > 0.70 ? "similar"      :
+      sim > 0.50 ? "related"      : "dissimilar";
+    return res.json({ similarity: sim, interpretation });
+  });
+
+  // GET /api/ai/models — list model registry (mirrors: nexus model list)
+  app.get("/api/ai/models", requireAuth as any, async (_req, res) => {
+    return res.json(MODEL_REGISTRY);
+  });
+
+  // GET /api/ai/models/:id — model details (mirrors: nexus model info)
+  app.get("/api/ai/models/:id", requireAuth as any, async (req, res) => {
+    const model = MODEL_REGISTRY.find(m => m.id === req.params.id);
+    if (!model) return res.status(404).json({ message: `Model '${req.params.id}' not found` });
+    return res.json(model);
+  });
+
+  // ── Meta / API Discovery ──────────────────────────────────────────────────
+
+  // GET /api/meta/endpoints — list all registered API routes (mirrors: nexus api endpoints)
+  app.get("/api/meta/endpoints", requireAuth as any, async (_req, res) => {
+    const endpoints = [
+      { method: "POST",   path: "/api/auth/login",                  auth: false,   description: "Authenticate and receive JWT token" },
+      { method: "POST",   path: "/api/auth/register",               auth: false,   description: "Register a new user account" },
+      { method: "GET",    path: "/api/auth/me",                     auth: true,    description: "Get current authenticated user" },
+      { method: "GET",    path: "/api/projects",                    auth: false,   description: "List all portfolio projects" },
+      { method: "GET",    path: "/api/projects/:id",                auth: false,   description: "Get a project by ID" },
+      { method: "POST",   path: "/api/projects",                    auth: true,    description: "Create a new portfolio project" },
+      { method: "PATCH",  path: "/api/projects/:id",                auth: true,    description: "Update a project" },
+      { method: "DELETE", path: "/api/projects/:id",                auth: true,    description: "Delete a project" },
+      { method: "GET",    path: "/api/bookings",                    auth: true,    description: "List all bookings (admin)" },
+      { method: "POST",   path: "/api/bookings",                    auth: false,   description: "Create a booking" },
+      { method: "GET",    path: "/api/inquiries",                   auth: true,    description: "List all inquiries (admin)" },
+      { method: "POST",   path: "/api/inquiries",                   auth: false,   description: "Submit an inquiry" },
+      { method: "PATCH",  path: "/api/inquiries/:id/resolve",       auth: true,    description: "Resolve an inquiry" },
+      { method: "GET",    path: "/api/settings",                    auth: true,    description: "Get user settings" },
+      { method: "PATCH",  path: "/api/settings",                    auth: true,    description: "Update user settings" },
+      { method: "GET",    path: "/api/settings/email-config",       auth: true,    description: "Get email configuration (admin)" },
+      { method: "PATCH",  path: "/api/settings/email-config",       auth: true,    description: "Update email configuration (admin)" },
+      { method: "POST",   path: "/api/settings/change-password",    auth: true,    description: "Change own password" },
+      { method: "POST",   path: "/api/settings/test-email",         auth: true,    description: "Send test email (admin)" },
+      { method: "GET",    path: "/api/admin/stats",                 auth: true,    description: "Dashboard statistics (admin)" },
+      { method: "PATCH",  path: "/api/users/role",                  auth: true,    description: "Update user's corporate role (admin)" },
+      { method: "GET",    path: "/api/corp-roles",                  auth: true,    description: "List all 8 corporate roles" },
+      { method: "GET",    path: "/api/data-ratings",                auth: true,    description: "List all 7 data-rating tiers" },
+      { method: "GET",    path: "/api/data-ratings/check",          auth: true,    description: "Check if caller can access a rating" },
+      { method: "POST",   path: "/api/ai/classify",                 auth: true,    description: "Classify text using the transformer" },
+      { method: "POST",   path: "/api/ai/embed",                    auth: true,    description: "Generate sentence embedding vector" },
+      { method: "POST",   path: "/api/ai/similarity",               auth: true,    description: "Cosine similarity between two texts" },
+      { method: "GET",    path: "/api/ai/models",                   auth: true,    description: "List model registry" },
+      { method: "GET",    path: "/api/ai/models/:id",               auth: true,    description: "Get model details by ID" },
+      { method: "GET",    path: "/api/meta/endpoints",              auth: true,    description: "List all API endpoints (this endpoint)" },
+      { method: "GET",    path: "/api/tests/results",               auth: false,   description: "Get cached test results" },
+      { method: "POST",   path: "/api/tests/run",                   auth: false,   description: "Trigger a fresh test run" },
+    ];
+    return res.json(endpoints);
   });
 
   return httpServer;

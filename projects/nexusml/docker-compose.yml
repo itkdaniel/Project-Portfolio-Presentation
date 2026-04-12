@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  nexusml:
+    build:
+      context: .
+      target: cpu
+    ports:
+      - "8001:8001"
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./models:/app/models:ro
+    depends_on:
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nexusml-gpu:
+    build:
+      context: .
+      target: cuda
+    profiles: [gpu]
+    ports:
+      - "8001:8001"
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./models:/app/models:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      redis: { condition: service_healthy }
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  redis_data:

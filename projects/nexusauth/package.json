@@ -1,0 +1,36 @@
+{
+  "name": "nexusauth",
+  "version": "1.0.0",
+  "description": "Production-grade JWT + RBAC authentication microservice",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "db:migrate": "drizzle-kit push",
+    "db:seed": "tsx src/db/seed.ts",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.10.0",
+    "bcrypt": "^5.1.1",
+    "drizzle-orm": "^0.30.10",
+    "hono": "^4.2.0",
+    "ioredis": "^5.3.2",
+    "nanoid": "^5.0.7",
+    "pg": "^8.11.5",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/node": "^20.12.0",
+    "@types/pg": "^8.11.5",
+    "drizzle-kit": "^0.21.0",
+    "tsx": "^4.7.2",
+    "typescript": "^5.4.5",
+    "vitest": "^1.5.0"
+  }
+}

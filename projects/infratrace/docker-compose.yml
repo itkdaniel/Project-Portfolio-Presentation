@@ -1,0 +1,73 @@
+version: "3.9"
+
+services:
+  collector:
+    build: .
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8080:8080"   # Query API
+      - "9411:9411"   # Zipkin compatible
+    volumes:
+      - ./collector.yaml:/app/collector.yaml:ro
+    depends_on:
+      clickhouse: { condition: service_healthy }
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      API_URL: http://collector:8080
+    depends_on:
+      - collector
+    restart: unless-stopped
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    ports:
+      - "8123:8123"   # HTTP
+      - "9000:9000"   # Native
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/config.xml:/etc/clickhouse-server/config.d/config.xml:ro
+    environment:
+      CLICKHOUSE_DB: infratrace
+      CLICKHOUSE_USER: infratrace
+      CLICKHOUSE_PASSWORD: infratrace
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/dashboards:/etc/grafana/provisioning/dashboards:ro
+    depends_on:
+      - clickhouse
+    restart: unless-stopped
+
+volumes:
+  clickhouse_data:
+  grafana_data:

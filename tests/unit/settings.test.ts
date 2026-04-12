@@ -29,6 +29,28 @@ beforeAll(async () => {
     password: "Demo@User2024!",
   });
   userToken = demoRes.body.token;
+
+  // Reset admin settings to known defaults so GET tests are deterministic
+  // across repeated runs (shared DB means PATCH tests from prior runs persist).
+  await request
+    .patch("/api/settings")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({
+      timezone:             "UTC",
+      language:             "en",
+      theme:                "dark",
+      compactMode:          false,
+      sidebarCollapsed:     false,
+      displayName:          null,
+      bio:                  null,
+      emailNotifications:   true,
+      notifyBookingConfirm: true,
+      notifyNewBooking:     true,
+      notifyNewInquiry:     true,
+      notifyProjectUpdates: false,
+      notifyWeeklyDigest:   false,
+      notifySecurityAlerts: true,
+    });
 }, 30000);
 
 afterAll(async () => {
