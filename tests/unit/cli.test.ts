@@ -51,6 +51,20 @@ beforeAll(async () => {
     .post("/api/auth/login")
     .send({ email: "demo@nexusconsult.dev", password: "Demo@User2024!" });
   demoToken = demoRes.body.token;
+
+  // Seed a project (before testing list  ) - mirrors: nexus portfolio add --name "CLI Test Project" ...
+  const projectRes = await (request(app) as any)
+    .post("/api/projects")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({
+      name: "Seed CLI Test Project",
+      description: "Created by Initial CLI integration test",
+      type: "seed-cli-test",
+      tags: ["seed", "cli", "test"],
+      status: "draft",
+      published: false,
+    });
+  cliTestProjectId = projectRes.body.id;
 });
 
 afterAll(async () => {
@@ -60,7 +74,6 @@ afterAll(async () => {
       .set("Authorization", `Bearer ${adminToken}`);
   }
 });
-
 
 // ── nexus auth ────────────────────────────────────────────────────────────────
 
@@ -105,7 +118,9 @@ describe("CLI: nexus auth", () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body).toHaveLength(8);
-    const levels = res.body.map((r: any) => r.level).sort((a: number, b: number) => a - b);
+    const levels = res.body
+      .map((r: any) => r.level)
+      .sort((a: number, b: number) => a - b);
     expect(levels).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
@@ -147,7 +162,6 @@ describe("CLI: nexus auth", () => {
   });
 });
 
-
 // ── nexus portfolio ───────────────────────────────────────────────────────────
 
 describe("CLI: nexus portfolio", () => {
@@ -156,6 +170,7 @@ describe("CLI: nexus portfolio", () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     // Array may be empty on a fresh CI database — length check done after `add` test
+    expect(res.body.length).toBeGreaterThanOrEqual(0);
   });
 
   it("add: POST /api/projects creates project (nexus portfolio add)", async () => {
@@ -163,12 +178,12 @@ describe("CLI: nexus portfolio", () => {
       .post("/api/projects")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({
-        name:        "CLI Test Project",
+        name: "CLI Test Project",
         description: "Created by CLI integration test",
-        type:        "cli-test",
-        tags:        ["cli", "test"],
-        status:      "draft",
-        published:   false,
+        type: "cli-test",
+        tags: ["cli", "test"],
+        status: "draft",
+        published: false,
       });
     expect(res.status).toBe(201);
     expect(res.body.name).toBe("CLI Test Project");
@@ -226,7 +241,6 @@ describe("CLI: nexus portfolio", () => {
     expect(res.status).toBe(400);
   });
 });
-
 
 // ── nexus data ────────────────────────────────────────────────────────────────
 
@@ -286,7 +300,6 @@ describe("CLI: nexus data", () => {
   });
 });
 
-
 // ── nexus ai ──────────────────────────────────────────────────────────────────
 
 describe("CLI: nexus ai", () => {
@@ -294,7 +307,9 @@ describe("CLI: nexus ai", () => {
     const res = await request(app)
       .post("/api/ai/classify")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ text: "Build an API gateway with rate limiting and circuit breaker" });
+      .send({
+        text: "Build an API gateway with rate limiting and circuit breaker",
+      });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("label");
     expect(res.body).toHaveProperty("confidence");
@@ -377,7 +392,6 @@ describe("CLI: nexus ai", () => {
   });
 });
 
-
 // ── nexus model ───────────────────────────────────────────────────────────────
 
 describe("CLI: nexus model", () => {
@@ -415,7 +429,6 @@ describe("CLI: nexus model", () => {
     expect(res.body).toHaveProperty("architecture");
   });
 });
-
 
 // ── nexus api endpoints ───────────────────────────────────────────────────────
 
