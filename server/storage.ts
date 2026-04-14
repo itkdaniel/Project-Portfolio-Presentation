@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, projects, bookings, inquiries, userSettings, emailConfig,
@@ -8,6 +8,11 @@ import {
   type Inquiry, type InsertInquiry,
   type UserSettings, type InsertUserSettings, type UpdateUserSettings,
   type EmailConfig, type UpdateEmailConfig,
+  taxPeriods, federalForms, stateForms, taxBrackets, standardDeductions,
+  specialTaxRates, taxQuestions, formRequirementRules, questionnaireSessions,
+  type TaxPeriod, type FederalForm, type StateForm, type TaxBracket,
+  type StandardDeduction, type SpecialTaxRate, type TaxQuestion,
+  type FormRequirementRule, type QuestionnaireSession, type InsertSession,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -37,6 +42,22 @@ export interface IStorage {
   // Email Config (admin)
   getEmailConfig(): Promise<EmailConfig | undefined>;
   upsertEmailConfig(data: UpdateEmailConfig): Promise<EmailConfig>;
+
+  // Tax Assistant
+  getTaxPeriods(): Promise<TaxPeriod[]>;
+  getTaxPeriod(taxYear: number): Promise<TaxPeriod | undefined>;
+  getFederalForms(category?: string): Promise<FederalForm[]>;
+  getFederalForm(formNumber: string): Promise<FederalForm | undefined>;
+  getStateForms(stateCode?: string): Promise<StateForm[]>;
+  getTaxBrackets(taxYear: number, filingStatus?: string): Promise<TaxBracket[]>;
+  getStandardDeductions(taxYear: number): Promise<StandardDeduction[]>;
+  getSpecialRates(taxYear: number): Promise<SpecialTaxRate[]>;
+  getTaxQuestions(): Promise<TaxQuestion[]>;
+  getFormRules(): Promise<FormRequirementRule[]>;
+  createSession(data: InsertSession): Promise<QuestionnaireSession>;
+  getSession(id: string): Promise<QuestionnaireSession | undefined>;
+  updateSession(id: string, answers: Record<string, unknown>, requiredForms?: unknown): Promise<QuestionnaireSession | undefined>;
+  completeSession(id: string, requiredForms: unknown): Promise<QuestionnaireSession | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -147,6 +168,93 @@ export class DatabaseStorage implements IStorage {
       .values(data as any)
       .returning();
     return created;
+  }
+
+  // ── Tax Assistant ──────────────────────────────────────────────────────────
+
+  async getTaxPeriods() {
+    return db.select().from(taxPeriods).orderBy(desc(taxPeriods.taxYear));
+  }
+
+  async getTaxPeriod(taxYear: number) {
+    const [p] = await db.select().from(taxPeriods).where(eq(taxPeriods.taxYear, taxYear));
+    return p;
+  }
+
+  async getFederalForms(category?: string) {
+    if (category) {
+      return db.select().from(federalForms)
+        .where(and(eq(federalForms.isActive, true), eq(federalForms.category, category)))
+        .orderBy(federalForms.sortOrder);
+    }
+    return db.select().from(federalForms)
+      .where(eq(federalForms.isActive, true))
+      .orderBy(federalForms.sortOrder);
+  }
+
+  async getFederalForm(formNumber: string) {
+    const [f] = await db.select().from(federalForms).where(eq(federalForms.formNumber, formNumber));
+    return f;
+  }
+
+  async getStateForms(stateCode?: string) {
+    if (stateCode) {
+      return db.select().from(stateForms)
+        .where(and(eq(stateForms.isActive, true), eq(stateForms.stateCode, stateCode)));
+    }
+    return db.select().from(stateForms).where(eq(stateForms.isActive, true));
+  }
+
+  async getTaxBrackets(taxYear: number, filingStatus?: string) {
+    if (filingStatus) {
+      return db.select().from(taxBrackets)
+        .where(and(eq(taxBrackets.taxYear, taxYear), eq(taxBrackets.filingStatus, filingStatus)));
+    }
+    return db.select().from(taxBrackets).where(eq(taxBrackets.taxYear, taxYear));
+  }
+
+  async getStandardDeductions(taxYear: number) {
+    return db.select().from(standardDeductions).where(eq(standardDeductions.taxYear, taxYear));
+  }
+
+  async getSpecialRates(taxYear: number) {
+    return db.select().from(specialTaxRates).where(eq(specialTaxRates.taxYear, taxYear));
+  }
+
+  async getTaxQuestions() {
+    return db.select().from(taxQuestions).orderBy(taxQuestions.sortOrder);
+  }
+
+  async getFormRules() {
+    return db.select().from(formRequirementRules);
+  }
+
+  async createSession(data: InsertSession) {
+    const [s] = await db.insert(questionnaireSessions).values(data).returning();
+    return s;
+  }
+
+  async getSession(id: string) {
+    const [s] = await db.select().from(questionnaireSessions).where(eq(questionnaireSessions.id, id));
+    return s;
+  }
+
+  async updateSession(id: string, answers: Record<string, unknown>, requiredForms?: unknown) {
+    const [s] = await db
+      .update(questionnaireSessions)
+      .set({ answers, ...(requiredForms !== undefined ? { requiredForms } : {}) })
+      .where(eq(questionnaireSessions.id, id))
+      .returning();
+    return s;
+  }
+
+  async completeSession(id: string, requiredForms: unknown) {
+    const [s] = await db
+      .update(questionnaireSessions)
+      .set({ status: "completed", requiredForms, completedAt: new Date() })
+      .where(eq(questionnaireSessions.id, id))
+      .returning();
+    return s;
   }
 }
 

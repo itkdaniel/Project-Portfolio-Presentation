@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, pgEnum, integer, serial, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, pgEnum, integer, serial, jsonb, numeric, doublePrecision } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -195,3 +195,167 @@ export const updateEmailConfigSchema = insertEmailConfigSchema.partial();
 export type InsertEmailConfig = z.infer<typeof insertEmailConfigSchema>;
 export type UpdateEmailConfig = z.infer<typeof updateEmailConfigSchema>;
 export type EmailConfig = typeof emailConfig.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TAX ASSISTANT SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Tax Periods ─────────────────────────────────────────────────────────────
+// One row per tax year; auto-seeded each January.
+export const taxPeriods = pgTable("tax_periods", {
+  id:           serial("id").primaryKey(),
+  taxYear:      integer("tax_year").notNull().unique(),       // e.g. 2024
+  filingDeadline: text("filing_deadline").notNull(),          // "April 15, 2025"
+  extensionDeadline: text("extension_deadline").notNull(),    // "October 15, 2025"
+  status:       text("status").notNull().default("active"),   // active | upcoming | closed
+  notes:        text("notes"),
+  seededAt:     timestamp("seeded_at").notNull().defaultNow(),
+});
+
+export const insertTaxPeriodSchema = createInsertSchema(taxPeriods).omit({ id: true, seededAt: true });
+export type InsertTaxPeriod = z.infer<typeof insertTaxPeriodSchema>;
+export type TaxPeriod = typeof taxPeriods.$inferSelect;
+
+// ── Federal Forms ────────────────────────────────────────────────────────────
+export const federalForms = pgTable("federal_forms", {
+  id:              serial("id").primaryKey(),
+  formNumber:      text("form_number").notNull(),             // "1040", "Schedule C"
+  title:           text("title").notNull(),
+  description:     text("description").notNull(),
+  category:        text("category").notNull(),                // individual | business | employer | informational | payment
+  subcategory:     text("subcategory"),                       // income | deduction | credit | etc.
+  whoFiles:        text("who_files").notNull(),               // "Taxpayer" | "Employer" | "Financial institution" etc.
+  providedBy:      text("provided_by"),                       // null=taxpayer completes; otherwise the entity that sends it
+  filingMethods:   text("filing_methods").array().notNull().default(sql`'{}'::text[]`), // ["mail","efile"]
+  irsUrl:          text("irs_url"),                           // Link to IRS form page
+  instructionsUrl: text("instructions_url"),                  // Link to IRS instructions
+  isActive:        boolean("is_active").notNull().default(true),
+  firstTaxYear:    integer("first_tax_year"),                 // Year form became applicable
+  lastTaxYear:     integer("last_tax_year"),                  // null = still in use
+  sortOrder:       integer("sort_order").notNull().default(0),
+});
+
+export const insertFederalFormSchema = createInsertSchema(federalForms).omit({ id: true });
+export type InsertFederalForm = z.infer<typeof insertFederalFormSchema>;
+export type FederalForm = typeof federalForms.$inferSelect;
+
+// ── State Forms ───────────────────────────────────────────────────────────────
+export const stateForms = pgTable("state_forms", {
+  id:              serial("id").primaryKey(),
+  stateCode:       text("state_code").notNull(),              // "CA", "NY", "TX"
+  stateName:       text("state_name").notNull(),
+  formNumber:      text("form_number").notNull(),
+  title:           text("title").notNull(),
+  description:     text("description").notNull(),
+  category:        text("category").notNull(),
+  whoFiles:        text("who_files").notNull(),
+  providedBy:      text("provided_by"),
+  filingMethods:   text("filing_methods").array().notNull().default(sql`'{}'::text[]`),
+  stateWebUrl:     text("state_web_url"),
+  hasIncomeTax:    boolean("has_income_tax").notNull().default(true),
+  isActive:        boolean("is_active").notNull().default(true),
+});
+
+export const insertStateFormSchema = createInsertSchema(stateForms).omit({ id: true });
+export type InsertStateForm = z.infer<typeof insertStateFormSchema>;
+export type StateForm = typeof stateForms.$inferSelect;
+
+// ── Tax Brackets ─────────────────────────────────────────────────────────────
+// Each row is one bracket band for a given year + filing status.
+export const taxBrackets = pgTable("tax_brackets", {
+  id:            serial("id").primaryKey(),
+  taxYear:       integer("tax_year").notNull(),
+  filingStatus:  text("filing_status").notNull(),             // single | mfj | mfs | hoh | qw
+  rate:          doublePrecision("rate").notNull(),           // 0.10, 0.12 … 0.37
+  incomeFrom:    numeric("income_from", { precision: 12, scale: 2 }).notNull(),
+  incomeTo:      numeric("income_to",   { precision: 12, scale: 2 }),  // null = no upper limit
+});
+
+export const insertTaxBracketSchema = createInsertSchema(taxBrackets).omit({ id: true });
+export type InsertTaxBracket = z.infer<typeof insertTaxBracketSchema>;
+export type TaxBracket = typeof taxBrackets.$inferSelect;
+
+// ── Standard Deductions ──────────────────────────────────────────────────────
+export const standardDeductions = pgTable("standard_deductions", {
+  id:               serial("id").primaryKey(),
+  taxYear:          integer("tax_year").notNull(),
+  filingStatus:     text("filing_status").notNull(),          // single | mfj | mfs | hoh | qw
+  baseAmount:       numeric("base_amount", { precision: 10, scale: 2 }).notNull(),
+  age65Addition:    numeric("age65_addition", { precision: 10, scale: 2 }).notNull().default("0"), // per qualifying person
+  blindAddition:    numeric("blind_addition",  { precision: 10, scale: 2 }).notNull().default("0"),
+});
+
+export const insertStandardDeductionSchema = createInsertSchema(standardDeductions).omit({ id: true });
+export type InsertStandardDeduction = z.infer<typeof insertStandardDeductionSchema>;
+export type StandardDeduction = typeof standardDeductions.$inferSelect;
+
+// ── Special Tax Rates ────────────────────────────────────────────────────────
+// FICA, SE, capital gains, AMT, NIIT, etc. — one row per rate type per year.
+export const specialTaxRates = pgTable("special_tax_rates", {
+  id:          serial("id").primaryKey(),
+  taxYear:     integer("tax_year").notNull(),
+  rateType:    text("rate_type").notNull(),                   // ss_employee | medicare_employee | se_tax | net_investment | amt | cap_gains_0 | cap_gains_15 | cap_gains_20
+  filingStatus: text("filing_status"),                        // null = applies to all
+  rate:        doublePrecision("rate").notNull(),
+  wageBase:    numeric("wage_base", { precision: 12, scale: 2 }), // SS wage base; null if not applicable
+  thresholdFrom: numeric("threshold_from", { precision: 12, scale: 2 }),
+  thresholdTo:   numeric("threshold_to",   { precision: 12, scale: 2 }),
+  description: text("description").notNull(),
+});
+
+export const insertSpecialTaxRateSchema = createInsertSchema(specialTaxRates).omit({ id: true });
+export type InsertSpecialTaxRate = z.infer<typeof insertSpecialTaxRateSchema>;
+export type SpecialTaxRate = typeof specialTaxRates.$inferSelect;
+
+// ── Questionnaire Questions ───────────────────────────────────────────────────
+export const taxQuestions = pgTable("tax_questions", {
+  id:           serial("id").primaryKey(),
+  questionKey:  text("question_key").notNull().unique(),      // "filing_status", "has_w2", etc.
+  category:     text("category").notNull(),                   // identity | income | deductions | credits | special
+  questionText: text("question_text").notNull(),
+  helpText:     text("help_text"),
+  inputType:    text("input_type").notNull(),                 // single_choice | multi_choice | yes_no | state_select | number
+  options:      jsonb("options"),                             // [{value, label, helpText?}]
+  isRequired:   boolean("is_required").notNull().default(true),
+  dependsOnKey: text("depends_on_key"),                      // only show if this question was answered
+  dependsOnVal: text("depends_on_val"),                      // with this value
+  sortOrder:    integer("sort_order").notNull().default(0),
+  appliesToIndividual: boolean("applies_to_individual").notNull().default(true),
+  appliesToBusiness:   boolean("applies_to_business").notNull().default(false),
+});
+
+export const insertTaxQuestionSchema = createInsertSchema(taxQuestions).omit({ id: true });
+export type InsertTaxQuestion = z.infer<typeof insertTaxQuestionSchema>;
+export type TaxQuestion = typeof taxQuestions.$inferSelect;
+
+// ── Form Requirement Rules ────────────────────────────────────────────────────
+// Maps a (questionKey=value) trigger to one or more required forms.
+export const formRequirementRules = pgTable("form_requirement_rules", {
+  id:            serial("id").primaryKey(),
+  questionKey:   text("question_key").notNull(),
+  questionValue: text("question_value").notNull(),            // value that triggers this rule; "*" = any non-false
+  formSource:    text("form_source").notNull(),               // "federal" | "state"
+  formNumber:    text("form_number").notNull(),
+  priority:      text("priority").notNull().default("required"), // required | likely | maybe
+  note:          text("note"),                                // extra context shown to user
+});
+
+export const insertFormRequirementRuleSchema = createInsertSchema(formRequirementRules).omit({ id: true });
+export type InsertFormRequirementRule = z.infer<typeof insertFormRequirementRuleSchema>;
+export type FormRequirementRule = typeof formRequirementRules.$inferSelect;
+
+// ── Questionnaire Sessions ────────────────────────────────────────────────────
+export const questionnaireSessions = pgTable("questionnaire_sessions", {
+  id:          varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  taxYear:     integer("tax_year").notNull(),
+  entityType:  text("entity_type").notNull().default("individual"),   // individual | business
+  answers:     jsonb("answers").notNull().default(sql`'{}'::jsonb`),  // {questionKey: value}
+  requiredForms: jsonb("required_forms"),                             // computed on completion
+  status:      text("status").notNull().default("in_progress"),       // in_progress | completed
+  startedAt:   timestamp("started_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertSessionSchema = createInsertSchema(questionnaireSessions).omit({ id: true, startedAt: true, completedAt: true });
+export type InsertSession = z.infer<typeof insertSessionSchema>;
+export type QuestionnaireSession = typeof questionnaireSessions.$inferSelect;

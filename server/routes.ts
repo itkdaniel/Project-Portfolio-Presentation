@@ -11,6 +11,8 @@ import {
 } from "@shared/schema";
 import { ZodError } from "zod";
 import { requireAuth, requireAdmin, generateToken, hashPassword, seedAdminUser, CORP_ROLE_SEED, DATA_RATING_SEED, type AuthenticatedRequest } from "./auth";
+import { seedTaxData } from "./tax-seed";
+import { initTaxScheduler } from "./tax-scheduler";
 import { loadCachedResults, runTests } from "./test-runner";
 import {
   sendBookingConfirmationToUser,
@@ -540,6 +542,161 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       { method: "POST",   path: "/api/tests/run",                   auth: false,   description: "Trigger a fresh test run" },
     ];
     return res.json(endpoints);
+  });
+
+  // ── Tax Assistant ─────────────────────────────────────────────────────────
+
+  // Seed initial data and start annual scheduler
+  const TAX_YEAR = new Date().getFullYear() - 1; // most recent completed tax year
+  await seedTaxData(TAX_YEAR);
+  initTaxScheduler().catch(console.error);
+
+  // GET /api/tax/periods
+  app.get("/api/tax/periods", async (_req, res) => {
+    try {
+      const periods = await storage.getTaxPeriods();
+      return res.json(periods);
+    } catch (e) { return res.status(500).json({ message: "Failed to fetch tax periods" }); }
+  });
+
+  // GET /api/tax/forms/federal?category=individual
+  app.get("/api/tax/forms/federal", async (req, res) => {
+    try {
+      const category = req.query.category as string | undefined;
+      const forms = await storage.getFederalForms(category);
+      return res.json(forms);
+    } catch (e) { return res.status(500).json({ message: "Failed to fetch federal forms" }); }
+  });
+
+  // GET /api/tax/forms/federal/:formNumber
+  app.get("/api/tax/forms/federal/:formNumber", async (req, res) => {
+    try {
+      const form = await storage.getFederalForm(decodeURIComponent(req.params.formNumber));
+      if (!form) return res.status(404).json({ message: "Form not found" });
+      return res.json(form);
+    } catch (e) { return res.status(500).json({ message: "Failed to fetch form" }); }
+  });
+
+  // GET /api/tax/forms/state?code=CA
+  app.get("/api/tax/forms/state", async (req, res) => {
+    try {
+      const code = req.query.code as string | undefined;
+      const forms = await storage.getStateForms(code);
+      return res.json(forms);
+    } catch (e) { return res.status(500).json({ message: "Failed to fetch state forms" }); }
+  });
+
+  // GET /api/tax/rates/:year — brackets + deductions + special rates
+  app.get("/api/tax/rates/:year", async (req, res) => {
+    try {
+      const year = parseInt(req.params.year);
+      if (isNaN(year)) return res.status(400).json({ message: "Invalid year" });
+      const filingStatus = req.query.filingStatus as string | undefined;
+      const [brackets, deductions, special] = await Promise.all([
+        storage.getTaxBrackets(year, filingStatus),
+        storage.getStandardDeductions(year),
+        storage.getSpecialRates(year),
+      ]);
+      return res.json({ taxYear: year, brackets, standardDeductions: deductions, specialRates: special });
+    } catch (e) { return res.status(500).json({ message: "Failed to fetch tax rates" }); }
+  });
+
+  // GET /api/tax/questions
+  app.get("/api/tax/questions", async (_req, res) => {
+    try {
+      const questions = await storage.getTaxQuestions();
+      return res.json(questions);
+    } catch (e) { return res.status(500).json({ message: "Failed to fetch questions" }); }
+  });
+
+  // POST /api/tax/sessions — start a new questionnaire session
+  app.post("/api/tax/sessions", async (req, res) => {
+    try {
+      const { taxYear, entityType } = req.body;
+      const year = taxYear ?? TAX_YEAR;
+      const session = await storage.createSession({ taxYear: year, entityType: entityType ?? "individual", answers: {}, requiredForms: null, status: "in_progress" });
+      return res.status(201).json(session);
+    } catch (e) { return res.status(500).json({ message: "Failed to create session" }); }
+  });
+
+  // GET /api/tax/sessions/:id
+  app.get("/api/tax/sessions/:id", async (req, res) => {
+    try {
+      const session = await storage.getSession(req.params.id);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      return res.json(session);
+    } catch (e) { return res.status(500).json({ message: "Failed to fetch session" }); }
+  });
+
+  // PATCH /api/tax/sessions/:id/answers — save answers progressively
+  app.patch("/api/tax/sessions/:id/answers", async (req, res) => {
+    try {
+      const session = await storage.getSession(req.params.id);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      const merged = { ...(session.answers as Record<string, unknown>), ...req.body.answers };
+      const updated = await storage.updateSession(req.params.id, merged);
+      return res.json(updated);
+    } catch (e) { return res.status(500).json({ message: "Failed to update answers" }); }
+  });
+
+  // POST /api/tax/sessions/:id/complete — compute required forms and mark complete
+  app.post("/api/tax/sessions/:id/complete", async (req, res) => {
+    try {
+      const session = await storage.getSession(req.params.id);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+
+      const answers = session.answers as Record<string, string>;
+      const allRules = await storage.getFormRules();
+      const allFederalForms = await storage.getFederalForms();
+      const stateCode = answers.state_of_residence as string | undefined;
+      const stateFormsData = stateCode ? await storage.getStateForms(stateCode) : [];
+
+      // Evaluate rules against answers
+      const matched: Array<{ formSource: string; formNumber: string; priority: string; note: string | null; formDetails?: unknown }> = [];
+      const seen = new Set<string>();
+
+      for (const rule of allRules) {
+        const val = answers[rule.questionKey];
+        if (!val) continue;
+        const matches = rule.questionValue === "*" ? !!val : val === rule.questionValue;
+        if (!matches) continue;
+        const key = `${rule.formSource}:${rule.formNumber}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const formDetails = rule.formSource === "federal"
+          ? allFederalForms.find(f => f.formNumber === rule.formNumber)
+          : stateFormsData.find(f => f.formNumber === rule.formNumber);
+        matched.push({ formSource: rule.formSource, formNumber: rule.formNumber, priority: rule.priority, note: rule.note, formDetails });
+      }
+
+      // Add state form if applicable
+      if (stateFormsData.length > 0 && !seen.has(`state:${stateFormsData[0].formNumber}`)) {
+        const sf = stateFormsData[0];
+        if (sf.hasIncomeTax) {
+          matched.push({ formSource: "state", formNumber: sf.formNumber, priority: "required", note: `${sf.stateName} residents must file ${sf.title}.`, formDetails: sf });
+        }
+      }
+
+      // Sort: required → likely → maybe
+      const ORDER: Record<string, number> = { required: 0, likely: 1, maybe: 2 };
+      matched.sort((a, b) => (ORDER[a.priority] ?? 3) - (ORDER[b.priority] ?? 3));
+
+      const completed = await storage.completeSession(req.params.id, matched);
+      return res.json(completed);
+    } catch (e) {
+      console.error("complete session error:", e);
+      return res.status(500).json({ message: "Failed to compute required forms" });
+    }
+  });
+
+  // POST /api/tax/admin/seed-year — admin trigger to seed a specific tax year
+  app.post("/api/tax/admin/seed-year", requireAdmin as any, async (req, res) => {
+    try {
+      const { taxYear } = req.body;
+      if (!taxYear || isNaN(parseInt(taxYear))) return res.status(400).json({ message: "taxYear required" });
+      await seedTaxData(parseInt(taxYear));
+      return res.json({ message: `Tax year ${taxYear} seeded successfully.` });
+    } catch (e) { return res.status(500).json({ message: "Seed failed" }); }
   });
 
   return httpServer;

@@ -170,7 +170,8 @@ describe("CLI: nexus portfolio", () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     // Array may be empty on a fresh CI database — length check done after `add` test
-    expect(res.body.length).toBeGreaterThanOrEqual(0);
+    
+  expect(res.body.length).toBeGreaterThanOrEqual(0);
   });
 
   it("add: POST /api/projects creates project (nexus portfolio add)", async () => {
