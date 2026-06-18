@@ -20,9 +20,11 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from httpx import ASGITransport, AsyncClient
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
 # ── Mock model ─────────────────────────────────────────────────────────────────
@@ -200,16 +202,50 @@ def _make_test_app(mock_model=None, mock_tokenizer=None, mock_redis=None):
             ],
         }
 
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+        import uuid as _uuid
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error":      str(exc.detail),
+                "code":       f"HTTP_{exc.status_code}",
+                "details":    {"message": str(exc.detail)},
+                "request_id": str(_uuid.uuid4()),
+            },
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        import uuid as _uuid
+        import json as _j
+        def _safe(v):
+            try: _j.dumps(v); return v
+            except TypeError: return str(v)
+        safe_errors = [
+            {k: _safe(v) for k, v in err.items()}
+            for err in exc.errors()
+        ]
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error":      "Validation error",
+                "code":       "VALIDATION_ERROR",
+                "details":    {"errors": safe_errors},
+                "request_id": str(_uuid.uuid4()),
+            },
+        )
+
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
-        import uuid
+        import uuid as _uuid
         return JSONResponse(
             status_code=500,
             content={
                 "error":      "Internal server error",
                 "code":       "INTERNAL_ERROR",
                 "details":    {"message": str(exc)},
-                "request_id": str(uuid.uuid4()),
+                "request_id": str(_uuid.uuid4()),
             },
         )
 

@@ -261,18 +261,11 @@ async def classify(req: ClassifyRequest, request: Request):
     model      = _require_model(request)
     tokenizer  = _require_tokenizer(request)
     settings   = _get_settings(request)
-    batcher    = _get_batcher(request)
     device     = request.app.state.device
 
     if req.is_batch:
-        # Batch path — prefer batcher (cross-request fusion) if available
-        if batcher is not None:
-            per_text_preds = await batcher.submit(req.texts)
-            # batcher returns raw embeddings; re-classify from logits
-            # For batch classify with batcher: we need a classify-specific batcher.
-            # Fallback to direct batch inference (batcher is for embed only).
-            pass
-
+        # Batch path: single forward pass over all texts in the list.
+        # (InferenceBatcher is scoped to embedding; classify uses direct batch.)
         all_preds = await anyio.to_thread.run_sync(
             lambda: _sync_classify_batch(
                 model, tokenizer, req.all_texts, req.top_k,

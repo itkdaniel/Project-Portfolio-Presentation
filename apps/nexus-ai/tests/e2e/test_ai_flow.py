@@ -271,6 +271,44 @@ class TestClassifyBatchE2E:
         assert r.status_code == 422
 
 
+class TestErrorEnvelopeE2E:
+    """All error paths must emit {error, code, details, request_id}."""
+
+    async def test_http_error_has_envelope(self, client):
+        """503 from missing model → standard envelope."""
+        # POST with model not loaded → 422 or 503; either way must have request_id
+        r    = await client.post("/v1/ai/classify", json={"text": "hi", "top_k": 3})
+        body = r.json()
+        # envelope fields must be present on any error
+        if r.status_code >= 400:
+            assert "request_id" in body
+
+    async def test_validation_error_has_envelope(self, client):
+        """422 from missing required field → standard envelope with request_id."""
+        r    = await client.post("/v1/ai/classify", json={"top_k": 3})
+        body = r.json()
+        assert r.status_code == 422
+        assert "request_id" in body
+        assert "code" in body
+        assert "error" in body
+
+    async def test_fill_mask_400_has_envelope(self, client):
+        """400 when [MASK] missing → envelope format."""
+        r    = await client.post("/v1/ai/fill-mask", json={"text": "no mask here"})
+        body = r.json()
+        assert r.status_code == 400
+        assert "error" in body
+        assert "code" in body
+        assert "request_id" in body
+
+    async def test_embed_error_envelope_on_bad_input(self, client):
+        """422 for empty texts list → envelope format."""
+        r    = await client.post("/v1/ai/embed", json={"texts": []})
+        body = r.json()
+        assert r.status_code == 422
+        assert "request_id" in body
+
+
 class TestAIStatusE2E:
     async def test_status_returns_200(self, client):
         r = await client.get("/v1/ai/status")

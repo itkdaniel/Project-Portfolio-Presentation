@@ -36,8 +36,10 @@ import torch
 import torch.nn.functional as F
 import redis.asyncio as aioredis
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import Settings, get_settings
 from app.routers.ai import router as ai_router
@@ -190,7 +192,6 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -228,6 +229,42 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 "GET  /docs",
             ],
         }
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+        request_id = str(uuid.uuid4())
+        detail = exc.detail
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error":      str(detail),
+                "code":       f"HTTP_{exc.status_code}",
+                "details":    {"message": str(detail)},
+                "request_id": request_id,
+            },
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        request_id = str(uuid.uuid4())
+        # Pydantic v2 may embed non-serializable objects in ctx; stringify them.
+        import json as _j
+        def _safe(v):
+            try: _j.dumps(v); return v
+            except TypeError: return str(v)
+        safe_errors = [
+            {k: _safe(v) for k, v in err.items()}
+            for err in exc.errors()
+        ]
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error":      "Validation error",
+                "code":       "VALIDATION_ERROR",
+                "details":    {"errors": safe_errors},
+                "request_id": request_id,
+            },
+        )
 
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
