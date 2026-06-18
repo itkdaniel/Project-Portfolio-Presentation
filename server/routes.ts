@@ -22,10 +22,42 @@ import {
 } from "./email";
 
 // ── nexus-booking gateway URL ──────────────────────────────────────────────
-// When NEXUS_BOOKING_URL is set (e.g. http://localhost:8002 in production /
+// When NEXUS_BOOKING_URL is set (e.g. http://localhost:8003 in production /
 // docker-compose), booking requests are proxied to the standalone service.
 // Falls back to local monolith storage when the env var is absent.
 const NEXUS_BOOKING_URL = process.env.NEXUS_BOOKING_URL || "";
+
+// ── nexus-search gateway URL ───────────────────────────────────────────────
+// When NEXUS_SEARCH_URL is set (e.g. http://localhost:8002 in production /
+// docker-compose), full-text search and BFS recommendation requests are
+// proxied to the standalone nexus-search microservice (BM25 + TagGraph).
+// Falls back to the local storage list when the env var is absent.
+const NEXUS_SEARCH_URL = process.env.NEXUS_SEARCH_URL || "";
+
+/**
+ * Proxy a request to the nexus-search microservice, forwarding query
+ * parameters and the Authorization header transparently.
+ */
+async function proxyToSearchService(
+  method: string,
+  path: string,
+  req: Request,
+  body?: unknown,
+): Promise<{ status: number; data: unknown }> {
+  // Preserve the original query string (e.g. ?q=auth&tags=jwt)
+  const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+  const url = `${NEXUS_SEARCH_URL}${path}${qs}`;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (req.headers.authorization) {
+    headers["Authorization"] = req.headers.authorization;
+  }
+  const init: RequestInit = { method, headers };
+  if (body !== undefined) init.body = JSON.stringify(body);
+  const resp = await fetch(url, init);
+  let data: unknown;
+  try { data = await resp.json(); } catch { data = null; }
+  return { status: resp.status, data };
+}
 
 /**
  * Proxy a request to the nexus-booking microservice, forwarding the
@@ -109,17 +141,53 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ ...user, corpRoleId: user.corpRoleId ?? 1 });
   });
 
-  // ── Projects — Public READ ─────────────────────────────────────────────
+  // ── Search — proxied to nexus-search when configured ──────────────────
+  // GET /api/search?q=...&tags=...&limit=20
+  // When NEXUS_SEARCH_URL is set, proxies to nexus-search /v1/search (BM25 +
+  // fuzzy fallback + Jaccard tag filter). Falls back to full project list.
 
-  app.get("/api/projects", async (_req, res) => {
+  app.get("/api/search", async (req, res) => {
+    if (NEXUS_SEARCH_URL) {
+      const { status, data } = await proxyToSearchService("GET", "/v1/search", req);
+      return res.status(status).json(data);
+    }
+    // Fallback: return all published projects
+    const list = await storage.getProjects();
+    return res.json(list);
+  });
+
+  // ── Projects — Public READ ─────────────────────────────────────────────
+  // When NEXUS_SEARCH_URL is configured, list + detail reads are proxied to
+  // the nexus-search service for BM25-powered filtering + cache-aside.
+
+  app.get("/api/projects", async (req, res) => {
+    if (NEXUS_SEARCH_URL) {
+      const { status, data } = await proxyToSearchService("GET", "/v1/projects", req);
+      return res.status(status).json(data);
+    }
     const list = await storage.getProjects();
     return res.json(list);
   });
 
   app.get("/api/projects/:id", async (req, res) => {
+    if (NEXUS_SEARCH_URL) {
+      const { status, data } = await proxyToSearchService("GET", `/v1/projects/${req.params.id}`, req);
+      return res.status(status).json(data);
+    }
     const project = await storage.getProject(req.params.id);
     if (!project) return res.status(404).json({ message: "Project not found" });
     return res.json(project);
+  });
+
+  // GET /api/projects/:id/related — BFS tag-graph recommendations via nexus-search
+  app.get("/api/projects/:id/related", async (req, res) => {
+    if (NEXUS_SEARCH_URL) {
+      const { status, data } = await proxyToSearchService(
+        "GET", `/v1/projects/${req.params.id}/related`, req
+      );
+      return res.status(status).json(data);
+    }
+    return res.status(503).json({ message: "NEXUS_SEARCH_URL not configured" });
   });
 
   // ── Projects — Admin WRITE ─────────────────────────────────────────────
