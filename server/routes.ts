@@ -21,6 +21,37 @@ import {
   getEmailConfig,
 } from "./email";
 
+// ── nexus-booking gateway URL ──────────────────────────────────────────────
+// When NEXUS_BOOKING_URL is set (e.g. http://localhost:8002 in production /
+// docker-compose), booking requests are proxied to the standalone service.
+// Falls back to local monolith storage when the env var is absent.
+const NEXUS_BOOKING_URL = process.env.NEXUS_BOOKING_URL || "";
+
+/**
+ * Proxy a request to the nexus-booking microservice, forwarding the
+ * Authorization header so admin endpoints remain protected.
+ */
+async function proxyToBookingService(
+  method: string,
+  path: string,
+  req: Request,
+  body?: unknown,
+): Promise<{ status: number; data: unknown }> {
+  const url = `${NEXUS_BOOKING_URL}${path}`;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (req.headers.authorization) {
+    headers["Authorization"] = req.headers.authorization;
+  }
+  const init: RequestInit = { method, headers };
+  if (body !== undefined) {
+    init.body = JSON.stringify(body);
+  }
+  const resp = await fetch(url, init);
+  let data: unknown;
+  try { data = await resp.json(); } catch { data = null; }
+  return { status: resp.status, data };
+}
+
 function zodErr(error: unknown) {
   if (error instanceof ZodError) {
     return { status: 400, body: { message: "Validation failed", errors: error.errors } };
@@ -127,19 +158,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ── Bookings ──────────────────────────────────────────────────────────
+  // When NEXUS_BOOKING_URL is configured, requests are proxied to the
+  // standalone nexus-booking microservice (auth header forwarded for admin
+  // endpoints). When absent, the monolith storage is used as a fallback.
 
-  app.get("/api/bookings", requireAdmin as any, async (_req, res) => {
+  app.get("/api/bookings", requireAdmin as any, async (req, res) => {
+    if (NEXUS_BOOKING_URL) {
+      const { status, data } = await proxyToBookingService("GET", "/v1/bookings", req);
+      return res.status(status).json(data);
+    }
     const list = await storage.getBookings();
     return res.json(list);
   });
 
   app.post("/api/bookings", async (req, res) => {
+    if (NEXUS_BOOKING_URL) {
+      try {
+        const body = insertBookingSchema.parse(req.body);
+        const { status, data } = await proxyToBookingService("POST", "/v1/bookings", req, body);
+        if (status === 201) pubsub.publish("booking:created", data);
+        return res.status(status).json(data);
+      } catch (e) {
+        const { status, body } = zodErr(e);
+        return res.status(status).json(body);
+      }
+    }
     try {
       const data = insertBookingSchema.parse(req.body);
       const booking = await storage.createBooking(data);
       pubsub.publish("booking:created", booking);
 
-      // Fire-and-forget email notifications
+      // Fire-and-forget email notifications (monolith path only)
       const cfg = await getEmailConfig();
       if (cfg?.enabled) {
         if (cfg.sendUserConfirmation) {
@@ -155,6 +204,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { status, body } = zodErr(e);
       return res.status(status).json(body);
     }
+  });
+
+  app.get("/api/bookings/:id", async (req, res) => {
+    if (NEXUS_BOOKING_URL) {
+      const { status, data } = await proxyToBookingService("GET", `/v1/bookings/${req.params.id}`, req);
+      return res.status(status).json(data);
+    }
+    return res.status(404).json({ message: "Not found" });
+  });
+
+  app.patch("/api/bookings/:id", requireAdmin as any, async (req, res) => {
+    if (NEXUS_BOOKING_URL) {
+      const { status, data } = await proxyToBookingService("PATCH", `/v1/bookings/${req.params.id}`, req, req.body);
+      return res.status(status).json(data);
+    }
+    return res.status(404).json({ message: "Not found" });
+  });
+
+  app.delete("/api/bookings/:id", requireAdmin as any, async (req, res) => {
+    if (NEXUS_BOOKING_URL) {
+      const { status, data } = await proxyToBookingService("DELETE", `/v1/bookings/${req.params.id}`, req);
+      return res.status(status).json(data);
+    }
+    return res.status(404).json({ message: "Not found" });
   });
 
   // ── Inquiries ──────────────────────────────────────────────────────────
