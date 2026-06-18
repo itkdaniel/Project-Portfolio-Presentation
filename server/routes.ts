@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { eq } from "drizzle-orm";
-import { buildRegistry, checkHealth, checkAllHealth, getCachedOpenApi, proxyToSubApp } from "./gateway";
+import { buildRegistry, checkHealth, checkAllHealth, getCachedOpenApi, proxyToSubApp, recordHealthSnapshot, getHealthHistory } from "./gateway";
 import { storage } from "./storage";
 import { pubsub } from "./pubsub";
 import { db } from "./db";
@@ -958,6 +958,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/apps", async (_req, res) => {
     try {
       const results = await checkAllHealth();
+      recordHealthSnapshot(results);   // persist to in-memory history buffer
       return res.json(results);
     } catch (e) {
       console.error("gateway /api/apps error:", e);
@@ -970,11 +971,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/apps/health", async (_req, res) => {
     try {
       const results = await checkAllHealth();
+      recordHealthSnapshot(results);
       return res.json(results);
     } catch (e) {
       console.error("gateway health-all error:", e);
       return res.status(500).json({ message: "Health check failed" });
     }
+  });
+
+  // GET /api/apps/health/history — in-memory circular buffer of health snapshots
+  // NOTE: must be registered before /:name to avoid being shadowed
+  app.get("/api/apps/health/history", (_req, res) => {
+    return res.json(getHealthHistory());
   });
 
   // GET /api/apps/:name — single sub-app with live health + endpoint list

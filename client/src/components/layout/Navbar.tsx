@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText } from "lucide-react";
+import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText, Activity } from "lucide-react";
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -49,6 +49,10 @@ export function Navbar() {
             <FileText className="w-4 h-4" />
             Tax Forms
           </Link>
+          <Link href="/status" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-status">
+            <Activity className="w-4 h-4" />
+            Status
+          </Link>
           <Link href="/settings" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-settings">
             <Settings className="w-4 h-4" />
             Settings
@@ -91,6 +95,9 @@ export function Navbar() {
           </Link>
           <Link href="/tax" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
             <FileText className="w-4 h-4" /> Tax Forms
+          </Link>
+          <Link href="/status" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
+            <Activity className="w-4 h-4" /> Status
           </Link>
           <Link href="/settings" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
             <Settings className="w-4 h-4" /> Settings

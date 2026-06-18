@@ -8,6 +8,7 @@ import Booking from "@/pages/Booking";
 import TestDashboard from "@/pages/TestDashboard";
 import Settings from "@/pages/Settings";
 import TaxAssistant from "@/pages/TaxAssistant";
+import StatusPage from "@/pages/StatusPage";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -18,6 +19,7 @@ function Router() {
       <Route path="/tests" component={TestDashboard}/>
       <Route path="/settings" component={Settings}/>
       <Route path="/tax" component={TaxAssistant}/>
+      <Route path="/status" component={StatusPage}/>
       <Route component={NotFound} />
     </Switch>
   );

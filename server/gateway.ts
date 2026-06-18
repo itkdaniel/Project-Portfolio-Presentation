@@ -244,6 +244,52 @@ export function invalidateOpenApiCache(name: string): void {
   openApiCache.delete(name);
 }
 
+// ── Health history ────────────────────────────────────────────────────────────
+
+export interface HealthSnapshot {
+  ts: number;
+  status: "healthy" | "unhealthy";
+  latencyMs?: number;
+}
+
+export interface HealthHistoryEntry {
+  name: string;
+  label: string;
+  snapshots: HealthSnapshot[];
+}
+
+// Circular buffer: keep the last 144 snapshots per app (≈ 24h at 10-min poll)
+const HISTORY_MAX = 144;
+const healthHistoryBuffer = new Map<string, HealthSnapshot[]>();
+
+/**
+ * Record a batch of health check results into the in-memory circular buffer.
+ * Called after every checkAllHealth() run.
+ */
+export function recordHealthSnapshot(results: SubAppStatus[]): void {
+  for (const r of results) {
+    const snapshots = healthHistoryBuffer.get(r.name) ?? [];
+    snapshots.push({
+      ts: Date.now(),
+      status: r.status === "healthy" ? "healthy" : "unhealthy",
+      latencyMs: r.latencyMs,
+    });
+    if (snapshots.length > HISTORY_MAX) snapshots.shift();
+    healthHistoryBuffer.set(r.name, snapshots);
+  }
+}
+
+/**
+ * Return the full health history for all registered sub-apps.
+ */
+export function getHealthHistory(): HealthHistoryEntry[] {
+  return buildRegistry().map((app) => ({
+    name: app.name,
+    label: app.label,
+    snapshots: healthHistoryBuffer.get(app.name) ?? [],
+  }));
+}
+
 // ── Transparent HTTP proxy ────────────────────────────────────────────────────
 
 // Request headers to forward to the upstream sub-app

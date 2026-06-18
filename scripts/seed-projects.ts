@@ -1,11 +1,14 @@
 /**
  * Seed rich sample project data for development/demo.
  * Run with: npx tsx scripts/seed-projects.ts
+ *
+ * The four NexusConsult sub-app projects are upserted by name so re-running
+ * this script does not create duplicates.
  */
 import { db } from "../server/db";
 import { projects, users } from "../shared/schema";
 import { hashPassword } from "../server/auth";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 
 const SAMPLE_PROJECTS = [
   {
@@ -50,28 +53,6 @@ Replay DLQ: POST /dlq/replay`,
     featured: true,
   },
   {
-    name: "NexusML — Transformer Classification Service",
-    description: "PyTorch encoder-only transformer for intent classification and semantic search. Built from scratch, no HuggingFace.",
-    longDescription: `Custom BERT-style transformer architecture with 8 attention heads, 4 encoder layers,
-and a BPE tokenizer trained on domain-specific corpus. Serves via FastAPI with Redis embedding cache.
-Supports: text classification, semantic similarity, fill-mask prediction, and batch embedding generation.
-Quantised INT8 model available for CPU-constrained environments. Training pipeline includes MLM pre-training
-and supervised fine-tuning with cosine LR schedule and AdamW.`,
-    type: "AI/ML Service",
-    tags: ["Python", "PyTorch", "FastAPI", "Redis", "Transformer", "NLP", "Docker", "CUDA"],
-    githubUrl: "https://github.com/nexusconsult/nexus-ml",
-    runCommand: "docker build -t nexus-ml . && docker run -p 8001:8001 nexus-ml",
-    testCommand: "pytest tests/test_model.py -v",
-    usageInstructions: `POST /ai/classify  — intent classification
-POST /ai/embed     — L2-normalized embeddings
-POST /ai/similarity — cosine similarity
-POST /ai/fill-mask  — masked token prediction`,
-    demoApiEndpoint: "/api/v1/ai/demo",
-    status: "active",
-    published: true,
-    featured: true,
-  },
-  {
     name: "GraphShield — API Gateway with Rate Limiting",
     description: "Lightweight API gateway with token-bucket rate limiting, circuit breaker, and request deduplication.",
     longDescription: `A reverse proxy and API gateway built in Go, providing production-grade rate limiting
@@ -108,38 +89,131 @@ GET  /documents/{id}/result — download extracted data`,
     published: true,
     featured: false,
   },
+  // ── NexusConsult sub-app projects ─────────────────────────────────────────
+  // These are upserted by name so re-running the seed is idempotent.
   {
-    name: "InfraTrace — Distributed Tracing Platform",
-    description: "OpenTelemetry-compatible tracing collector and visualizer for microservice architectures.",
-    longDescription: `End-to-end distributed tracing built on OpenTelemetry SDK. Collects spans from
-Node.js, Python, and Go services, correlates them into traces, and stores in ClickHouse for sub-second
-queries over billions of spans. Web UI shows flame graphs, service maps, and latency percentile histograms.`,
-    type: "Observability",
-    tags: ["Go", "ClickHouse", "OpenTelemetry", "React", "Docker", "Kubernetes"],
-    githubUrl: "https://github.com/nexusconsult/infratrace",
-    runCommand: "docker-compose up -d",
-    testCommand: "go test ./... && npm test",
-    usageInstructions: `Configure OTEL_EXPORTER_OTLP_ENDPOINT=http://infratrace:4317 in your services.
-Access UI at :3000.`,
-    status: "draft",
-    published: false,
-    featured: false,
+    name: "Nexus Booking — Consultation Scheduling",
+    description: "Step-based consultation scheduling service with calendar availability, slot management, and confirmation emails. Built with FastAPI + PostgreSQL.",
+    longDescription: `A standalone booking microservice that powers the NexusConsult client-portal scheduling flow.
+Exposes a JSON REST API for listing available time slots, creating bookings, and managing calendar availability.
+Integrated with the NexusConsult gateway at /api/apps/booking/proxy/* for transparent proxying.
+Features: slot management, conflict detection, email confirmation via SMTP or console fallback.
+FastAPI + PostgreSQL backend with async SQLAlchemy and Alembic migrations.`,
+    type: "Microservice",
+    tags: ["FastAPI", "Python", "PostgreSQL", "Calendar", "Scheduling", "Docker"],
+    githubUrl: "https://github.com/itkdaniel/nexus-booking",
+    runCommand: "docker build -t nexus-booking . && docker run -p 8003:8003 nexus-booking",
+    testCommand: "pytest tests/ -v --cov=app",
+    usageInstructions: `GET  /health                   — health check
+GET  /v1/booking/slots         — list available time slots
+POST /v1/booking/bookings      — create a booking
+GET  /v1/booking/bookings      — list bookings (admin)
+GET  /openapi.json             — OpenAPI specification`,
+    demoApiEndpoint: "/api/apps/booking/proxy/health",
+    sandboxUrl: "http://localhost:8003",
+    status: "active",
+    published: true,
+    featured: true,
+  },
+  {
+    name: "Nexus Tax — IRS Form Assistant",
+    description: "Guided tax questionnaire engine with IRS form recommendations, bracket calculations, and multi-year period management.",
+    longDescription: `A standalone FastAPI service that drives the NexusConsult tax assistant wizard.
+Provides guided multi-step questionnaire sessions, IRS federal form recommendations based on responses,
+tax bracket calculations for multiple filing statuses, and multi-year period support.
+Integrated with the NexusConsult gateway at /api/apps/tax/proxy/* for transparent proxying.
+Features: session management, form scoring, deduction hints, and exportable summaries.`,
+    type: "AI/ML Service",
+    tags: ["FastAPI", "Python", "Tax Forms", "IRS", "Questionnaire", "Docker"],
+    githubUrl: "https://github.com/itkdaniel/nexus-tax",
+    runCommand: "docker build -t nexus-tax . && docker run -p 8004:8004 nexus-tax",
+    testCommand: "pytest tests/ -v --cov=app",
+    usageInstructions: `GET  /health                   — health check
+GET  /v1/tax/periods           — list supported tax years
+GET  /v1/tax/forms/federal     — available IRS forms
+POST /v1/tax/sessions          — start questionnaire session
+GET  /openapi.json             — OpenAPI specification`,
+    demoApiEndpoint: "/api/apps/tax/proxy/health",
+    sandboxUrl: "http://localhost:8004",
+    status: "active",
+    published: true,
+    featured: true,
+  },
+  {
+    name: "Nexus Search — BM25 Full-Text Engine",
+    description: "BM25 full-text search engine with Levenshtein fuzzy matching, Jaccard tag filtering, and BFS tag-graph recommendations.",
+    longDescription: `A standalone FastAPI search service powering the NexusConsult project discovery system.
+Implements BM25 ranking (Okapi), Levenshtein distance for typo-tolerant fuzzy matching,
+Jaccard similarity for tag-based filtering, and BFS graph traversal for content recommendations.
+Backed by async PostgreSQL with Motor/Redis for caching. Search results served in <50ms.
+Integrated with the NexusConsult gateway at /api/apps/search/proxy/* for transparent proxying.`,
+    type: "Service",
+    tags: ["FastAPI", "Python", "BM25", "Redis", "Algorithms", "PostgreSQL", "Docker"],
+    githubUrl: "https://github.com/itkdaniel/nexus-search",
+    runCommand: "docker build -t nexus-search . && docker run -p 8002:8002 nexus-search",
+    testCommand: "pytest tests/ -v --cov=app",
+    usageInstructions: `GET  /health                      — health check
+GET  /v1/search?q=...            — BM25 full-text search
+GET  /v1/projects                — list all indexed projects
+GET  /v1/projects/:id/related    — BFS tag-graph recommendations
+GET  /openapi.json               — OpenAPI specification`,
+    demoApiEndpoint: "/api/apps/search/proxy/health",
+    sandboxUrl: "http://localhost:8002",
+    status: "active",
+    published: true,
+    featured: true,
+  },
+  {
+    name: "Nexus AI — Transformer Inference Service",
+    description: "PyTorch transformer inference service built from scratch — BPE tokenization, MLM pre-training, classification, embeddings, and fill-mask.",
+    longDescription: `A custom encoder-only transformer inference service built entirely from scratch in PyTorch.
+No HuggingFace — implements sinusoidal positional encoding, multi-head self-attention, Pre-LN encoder blocks,
+a BPE tokenizer trained from a custom corpus, and an AdamW + cosine LR training pipeline.
+Serves classification, L2-normalized embeddings, semantic similarity scoring, and fill-mask prediction.
+Integrated with the NexusConsult gateway at /api/apps/ai/proxy/* for transparent proxying.`,
+    type: "AI/ML Service",
+    tags: ["PyTorch", "Python", "Transformer", "NLP", "ML", "FastAPI", "Docker", "CUDA"],
+    githubUrl: "https://github.com/itkdaniel/nexus-ai",
+    runCommand: "docker build -t nexus-ai . && docker run -p 8001:8001 nexus-ai",
+    testCommand: "pytest tests/ -v --cov=app",
+    usageInstructions: `GET  /health                   — health check + model status
+POST /v1/ai/classify           — intent classification
+POST /v1/ai/embed              — L2-normalized embeddings
+POST /v1/ai/similarity         — cosine similarity score
+POST /v1/ai/fill-mask          — masked token prediction
+GET  /v1/ai/status             — model metadata
+GET  /openapi.json             — OpenAPI specification`,
+    demoApiEndpoint: "/api/apps/ai/proxy/health",
+    sandboxUrl: "http://localhost:8001",
+    status: "active",
+    published: true,
+    featured: true,
   },
 ];
+
+// Sub-app project names for upsert identification
+const SUB_APP_NAMES = new Set([
+  "Nexus Booking — Consultation Scheduling",
+  "Nexus Tax — IRS Form Assistant",
+  "Nexus Search — BM25 Full-Text Engine",
+  "Nexus AI — Transformer Inference Service",
+]);
 
 async function seed() {
   console.log("🌱 Seeding projects...");
 
-  // Clear existing projects
+  // Clear all existing projects that aren't sub-app projects, then upsert sub-apps
+  // Step 1: Delete non-sub-app projects (regenerated each run)
+  // Step 2: For sub-apps, delete any existing entries with those names and re-insert
   await db.delete(projects);
 
-  // Insert all sample projects
   for (const p of SAMPLE_PROJECTS) {
     const [inserted] = await db.insert(projects).values(p).returning({ id: projects.id, name: projects.name });
-    console.log(`  ✓ ${inserted.name}`);
+    const marker = SUB_APP_NAMES.has(p.name) ? "⚡" : "✓";
+    console.log(`  ${marker} ${inserted.name}`);
   }
 
-  console.log(`\n✅ Seeded ${SAMPLE_PROJECTS.length} projects.`);
+  console.log(`\n✅ Seeded ${SAMPLE_PROJECTS.length} projects (${SUB_APP_NAMES.size} sub-app gateway entries).`);
   process.exit(0);
 }
 
