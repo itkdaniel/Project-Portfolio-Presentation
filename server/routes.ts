@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { eq } from "drizzle-orm";
-import { buildRegistry, checkHealth, checkAllHealth, proxyToSubApp } from "./gateway";
+import { buildRegistry, checkHealth, checkAllHealth, getCachedOpenApi, proxyToSubApp } from "./gateway";
 import { storage } from "./storage";
 import { pubsub } from "./pubsub";
 import { db } from "./db";
@@ -953,14 +953,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   //   GET  /api/apps/:name/openapi      — proxy to sub-app's OpenAPI spec
   //   ANY  /api/apps/:name/proxy/*      — transparent HTTP proxy to sub-app
 
-  // GET /api/apps — return the full sub-app registry
-  app.get("/api/apps", (_req, res) => {
-    const registry = buildRegistry();
-    return res.json(registry);
+  // GET /api/apps — health-enriched registry (parallel health checks)
+  app.get("/api/apps", async (_req, res) => {
+    try {
+      const results = await checkAllHealth();
+      return res.json(results);
+    } catch (e) {
+      console.error("gateway /api/apps error:", e);
+      return res.status(500).json({ message: "Gateway registry unavailable" });
+    }
   });
 
-  // GET /api/apps/health — parallel health check for all sub-apps
-  // NOTE: must be registered before /api/apps/:name to avoid shadowing
+  // GET /api/apps/health — parallel health check (same as /api/apps but
+  // semantically explicit; registered before /:name to avoid shadowing)
   app.get("/api/apps/health", async (_req, res) => {
     try {
       const results = await checkAllHealth();
@@ -971,12 +976,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // GET /api/apps/:name — single sub-app metadata
-  app.get("/api/apps/:name", (req, res) => {
+  // GET /api/apps/:name — single sub-app with live health + endpoint list
+  app.get("/api/apps/:name", async (req, res) => {
     const registry = buildRegistry();
     const app2 = registry.find((a) => a.name === req.params.name);
     if (!app2) return res.status(404).json({ message: `Sub-app '${req.params.name}' not found` });
-    return res.json(app2);
+    try {
+      const result = await checkHealth(app2);
+      return res.json(result); // includes all SubAppInfo fields + status + latencyMs + endpoints
+    } catch (e) {
+      console.error(`gateway /:name error [${req.params.name}]:`, e);
+      return res.json({ ...app2, status: "unhealthy" });
+    }
   });
 
   // GET /api/apps/:name/health — health check for one sub-app
@@ -994,46 +1005,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // GET /api/apps/:name/openapi — proxy OpenAPI spec from sub-app
+  // GET /api/apps/:name/openapi — TTL-cached OpenAPI spec from sub-app
   app.get("/api/apps/:name/openapi", async (req, res) => {
     const registry = buildRegistry();
     const app2 = registry.find((a) => a.name === req.params.name);
     if (!app2) return res.status(404).json({ message: `Sub-app '${req.params.name}' not found` });
-    try {
-      const { status, data, contentType } = await proxyToSubApp(
-        app2, "GET", app2.openApiPath, req.headers as Record<string, string>
-      );
-      res.status(status).setHeader("Content-Type", contentType);
-      return res.json(data);
-    } catch (e) {
-      console.error(`gateway openapi error [${req.params.name}]:`, e);
-      return res.status(503).json({ message: `${req.params.name} service unavailable` });
-    }
+    const { hit, data, status } = await getCachedOpenApi(app2);
+    res.setHeader("X-Cache", hit ? "HIT" : "MISS");
+    res.setHeader("Content-Type", "application/json");
+    return res.status(status).json(data);
   });
 
   // ANY /api/apps/:name/proxy/... — transparent HTTP proxy to sub-app
-  // Using app.use() instead of app.all() to avoid path-to-regexp wildcard issues
-  // with named params + bare `*` in newer Express versions.
+  // app.use() avoids path-to-regexp wildcard issues with named params + bare `*`
+  // in newer Express/path-to-regexp versions.
   app.use("/api/apps/:name/proxy", async (req: Request, res: Response) => {
     const registry = buildRegistry();
     const name = req.params.name as string;
     const app2 = registry.find((a) => a.name === name);
     if (!app2) return res.status(404).json({ message: `Sub-app '${name}' not found` });
 
-    // req.path here is relative to the mount point (/api/apps/:name/proxy)
+    // req.path is relative to the mount point; append query string
     const subPath = req.path || "/";
     const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
 
     try {
-      const { status, data, contentType } = await proxyToSubApp(
-        app2, req.method, `${subPath}${qs}`, req.headers as Record<string, string>,
-        ["GET", "HEAD", "DELETE"].includes(req.method) ? undefined : req.body,
-      );
-      res.status(status).setHeader("Content-Type", contentType);
-      return res.json(data);
+      await proxyToSubApp(app2, req, res, `${subPath}${qs}`);
     } catch (e) {
       console.error(`gateway proxy error [${name}]:`, e);
-      return res.status(503).json({ message: `${name} service unavailable` });
+      if (!res.headersSent) {
+        return res.status(503).json({ message: `${name} service unavailable` });
+      }
     }
   });
 

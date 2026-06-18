@@ -1,15 +1,26 @@
 /**
- * Gateway unit tests — sub-app registry, health aggregation, proxy helpers.
+ * Gateway unit + integration tests
+ * — sub-app registry, health aggregation, OpenAPI cache, proxy helpers
+ * — HTTP route integration tests (GET /api/apps, /api/apps/:name, etc.)
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { buildRegistry, checkHealth, checkAllHealth } from "../../server/gateway";
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
+import express from "express";
+import { createServer } from "http";
+import supertest from "supertest";
+import { registerRoutes } from "../../server/routes";
+import {
+  buildRegistry,
+  checkHealth,
+  checkAllHealth,
+  getCachedOpenApi,
+  invalidateOpenApiCache,
+} from "../../server/gateway";
 
 // ── Registry ─────────────────────────────────────────────────────────────────
 
 describe("buildRegistry()", () => {
   it("returns exactly 4 sub-apps", () => {
-    const reg = buildRegistry();
-    expect(reg).toHaveLength(4);
+    expect(buildRegistry()).toHaveLength(4);
   });
 
   it("includes booking, tax, search, and ai entries", () => {
@@ -29,7 +40,26 @@ describe("buildRegistry()", () => {
       expect(app.healthPath).toMatch(/^\//);
       expect(app.openApiPath).toMatch(/^\//);
       expect(Array.isArray(app.tags)).toBe(true);
+      expect(Array.isArray(app.matchKeys)).toBe(true);
+      expect(Array.isArray(app.endpoints)).toBe(true);
       expect(app.port).toBeGreaterThan(0);
+    }
+  });
+
+  it("each entry exposes at least one endpoint", () => {
+    for (const app of buildRegistry()) {
+      expect(app.endpoints.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("endpoint objects have method, path, description, auth", () => {
+    for (const app of buildRegistry()) {
+      for (const ep of app.endpoints) {
+        expect(["GET","POST","PUT","PATCH","DELETE"]).toContain(ep.method);
+        expect(ep.path).toMatch(/^\//);
+        expect(typeof ep.description).toBe("string");
+        expect(typeof ep.auth).toBe("boolean");
+      }
     }
   });
 
@@ -81,6 +111,18 @@ describe("buildRegistry()", () => {
       else process.env[k] = saved[k];
     });
   });
+
+  it("all apps have githubUrl set", () => {
+    for (const app of buildRegistry()) {
+      expect(app.githubUrl).toBeTruthy();
+    }
+  });
+
+  it("all apps have matchKeys with at least one entry", () => {
+    for (const app of buildRegistry()) {
+      expect(app.matchKeys.length).toBeGreaterThan(0);
+    }
+  });
 });
 
 // ── checkHealth() ─────────────────────────────────────────────────────────────
@@ -127,7 +169,7 @@ describe("checkHealth()", () => {
     expect(result.status).toBe("unhealthy");
   });
 
-  it("preserves app metadata on result", async () => {
+  it("preserves app metadata including endpoints on result", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -138,6 +180,7 @@ describe("checkHealth()", () => {
     expect(result.name).toBe("tax");
     expect(result.label).toBe("Nexus Tax");
     expect(result.port).toBe(8004);
+    expect(Array.isArray(result.endpoints)).toBe(true);
   });
 });
 
@@ -167,9 +210,8 @@ describe("checkAllHealth()", () => {
 
   it("runs health checks in parallel (Promise.allSettled)", async () => {
     const order: number[] = [];
-    mockFetch.mockImplementation((_url: string) => {
-      const i = order.length;
-      order.push(i);
+    mockFetch.mockImplementation(() => {
+      order.push(order.length);
       return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
     });
     await checkAllHealth();
@@ -184,13 +226,85 @@ describe("checkAllHealth()", () => {
       .mockRejectedValueOnce(new Error("timeout"));
 
     const results = await checkAllHealth();
-    const statuses = results.map((r) => r.status);
-    expect(statuses.filter((s) => s === "healthy")).toHaveLength(2);
-    expect(statuses.filter((s) => s === "unhealthy")).toHaveLength(2);
+    expect(results.filter((r) => r.status === "healthy")).toHaveLength(2);
+    expect(results.filter((r) => r.status === "unhealthy")).toHaveLength(2);
+  });
+
+  it("each result includes endpoints array", async () => {
+    mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    const results = await checkAllHealth();
+    for (const r of results) {
+      expect(Array.isArray(r.endpoints)).toBe(true);
+    }
   });
 });
 
-// ── Gateway route shapes ─────────────────────────────────────────────────────
+// ── getCachedOpenApi() ────────────────────────────────────────────────────────
+
+describe("getCachedOpenApi()", () => {
+  const mockFetch = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();           // reset call counts between tests
+    vi.stubGlobal("fetch", mockFetch);
+    invalidateOpenApiCache("ai");
+    invalidateOpenApiCache("search");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("fetches from upstream on cache miss", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ openapi: "3.0.0" }),
+    });
+    const app = buildRegistry().find((a) => a.name === "ai")!;
+    const result = await getCachedOpenApi(app);
+    expect(result.hit).toBe(false);
+    expect(result.status).toBe(200);
+    expect(result.data).toEqual({ openapi: "3.0.0" });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns cached data on subsequent call (cache hit)", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ openapi: "3.0.0" }),
+    });
+    const app = buildRegistry().find((a) => a.name === "ai")!;
+    await getCachedOpenApi(app);          // prime cache
+    const second = await getCachedOpenApi(app); // should be HIT
+    expect(second.hit).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(1); // fetched only once
+  });
+
+  it("invalidateOpenApiCache clears the entry", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ openapi: "3.0.0" }),
+    });
+    const app = buildRegistry().find((a) => a.name === "search")!;
+    await getCachedOpenApi(app);
+    invalidateOpenApiCache("search");
+    await getCachedOpenApi(app);
+    expect(mockFetch).toHaveBeenCalledTimes(2); // fetched twice after invalidation
+  });
+
+  it("returns 503 status when upstream unreachable", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    const app = buildRegistry().find((a) => a.name === "search")!;
+    const result = await getCachedOpenApi(app);
+    expect(result.status).toBe(503);
+    expect(result.data).toBeNull();
+  });
+});
+
+// ── SubAppInfo shape contract ─────────────────────────────────────────────────
 
 describe("SubAppInfo shape contract", () => {
   it("booking has correct default port", () => {
@@ -198,8 +312,7 @@ describe("SubAppInfo shape contract", () => {
     const saved: Record<string, string | undefined> = {};
     envKeys.forEach((k) => { saved[k] = process.env[k]; delete process.env[k]; });
 
-    const booking = buildRegistry().find((a) => a.name === "booking")!;
-    expect(booking.port).toBe(8003);
+    expect(buildRegistry().find((a) => a.name === "booking")!.port).toBe(8003);
 
     envKeys.forEach((k) => {
       if (saved[k] === undefined) delete process.env[k];
@@ -212,18 +325,148 @@ describe("SubAppInfo shape contract", () => {
     const saved: Record<string, string | undefined> = {};
     envKeys.forEach((k) => { saved[k] = process.env[k]; delete process.env[k]; });
 
-    const ai = buildRegistry().find((a) => a.name === "ai")!;
-    expect(ai.port).toBe(8001);
+    expect(buildRegistry().find((a) => a.name === "ai")!.port).toBe(8001);
 
     envKeys.forEach((k) => {
       if (saved[k] === undefined) delete process.env[k];
       else process.env[k] = saved[k];
     });
   });
+});
 
-  it("all apps have githubUrl set", () => {
-    for (const app of buildRegistry()) {
-      expect(app.githubUrl).toBeTruthy();
+// ── Route integration tests ───────────────────────────────────────────────────
+
+let routeApp: ReturnType<typeof express>;
+let routeServer: ReturnType<typeof createServer>;
+let request: ReturnType<typeof supertest>;
+
+beforeAll(async () => {
+  routeApp = express();
+  routeApp.use(express.json());
+  routeServer = createServer(routeApp);
+  await registerRoutes(routeServer, routeApp);
+  await new Promise<void>((resolve) => routeServer.listen(0, resolve));
+  request = supertest(routeServer);
+}, 30000);
+
+afterAll(async () => {
+  await new Promise<void>((resolve, reject) =>
+    routeServer.close((err) => (err ? reject(err) : resolve()))
+  );
+});
+
+describe("GET /api/apps", () => {
+  it("returns 200 and an array of 4 sub-apps", async () => {
+    const res = await request.get("/api/apps");
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBe(4);
+  });
+
+  it("each entry has name, label, description, baseUrl, endpoints, status", async () => {
+    const res = await request.get("/api/apps");
+    for (const app of res.body) {
+      expect(app.name).toBeTruthy();
+      expect(app.label).toBeTruthy();
+      expect(app.description).toBeTruthy();
+      expect(app.baseUrl).toMatch(/^https?:\/\//);
+      expect(Array.isArray(app.endpoints)).toBe(true);
+      expect(["healthy","unhealthy","unconfigured"]).toContain(app.status);
     }
+  });
+
+  it("includes all four app names", async () => {
+    const res = await request.get("/api/apps");
+    const names = res.body.map((a: { name: string }) => a.name);
+    expect(names).toContain("booking");
+    expect(names).toContain("tax");
+    expect(names).toContain("search");
+    expect(names).toContain("ai");
+  });
+});
+
+describe("GET /api/apps/health", () => {
+  it("returns 200 and 4 health-status objects", async () => {
+    const res = await request.get("/api/apps/health");
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBe(4);
+  });
+
+  it("each entry has status field", async () => {
+    const res = await request.get("/api/apps/health");
+    for (const entry of res.body) {
+      expect(["healthy","unhealthy","unconfigured"]).toContain(entry.status);
+    }
+  });
+});
+
+describe("GET /api/apps/:name", () => {
+  it("returns 200 with endpoints for a known app", async () => {
+    const res = await request.get("/api/apps/booking");
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe("booking");
+    expect(Array.isArray(res.body.endpoints)).toBe(true);
+    expect(res.body.endpoints.length).toBeGreaterThan(0);
+    expect(["healthy","unhealthy"]).toContain(res.body.status);
+  });
+
+  it("returns 404 for an unknown app name", async () => {
+    const res = await request.get("/api/apps/unknown-service");
+    expect(res.status).toBe(404);
+    expect(res.body.message).toMatch(/not found/i);
+  });
+
+  it("returns latencyMs field", async () => {
+    const res = await request.get("/api/apps/ai");
+    expect(res.status).toBe(200);
+    expect(typeof res.body.latencyMs).toBe("number");
+  });
+});
+
+describe("GET /api/apps/:name/health", () => {
+  it("returns 200 or 503 with status for a known app", async () => {
+    const res = await request.get("/api/apps/search/health");
+    expect([200, 503]).toContain(res.status);
+    expect(["healthy","unhealthy"]).toContain(res.body.status);
+  });
+
+  it("returns 404 for unknown app name", async () => {
+    const res = await request.get("/api/apps/does-not-exist/health");
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("GET /api/apps/:name/openapi", () => {
+  it("returns 200 or 503 with X-Cache header", async () => {
+    const res = await request.get("/api/apps/tax/openapi");
+    expect([200, 503]).toContain(res.status);
+    expect(["HIT","MISS"]).toContain(res.headers["x-cache"]);
+  });
+
+  it("returns 404 for unknown app", async () => {
+    const res = await request.get("/api/apps/nonexistent/openapi");
+    expect(res.status).toBe(404);
+  });
+
+  it("second call returns X-Cache: HIT when first succeeded", async () => {
+    // This test only passes if the upstream is actually reachable — skip gracefully
+    const first = await request.get("/api/apps/booking/openapi");
+    if (first.status !== 200) return; // upstream offline, skip
+    const second = await request.get("/api/apps/booking/openapi");
+    expect(second.headers["x-cache"]).toBe("HIT");
+  });
+});
+
+describe("GET /api/apps/:name/proxy (transparent proxy)", () => {
+  it("returns 503 or passes through when sub-app is offline", async () => {
+    const res = await request.get("/api/apps/ai/proxy/health");
+    // Either gateway-level 503 (app offline) or upstream response
+    expect([200, 503, 404, 500, 502]).toContain(res.status);
+  });
+
+  it("returns 404 for unknown app via proxy", async () => {
+    const res = await request.get("/api/apps/imaginary/proxy/health");
+    expect(res.status).toBe(404);
   });
 });
