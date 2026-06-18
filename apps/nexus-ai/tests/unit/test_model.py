@@ -104,6 +104,41 @@ class TestBPETokenizer:
         for tid in result["input_ids"]:
             assert 0 <= tid < len(trained_tokenizer.vocab)
 
+    # ── [MASK] preservation regression ───────────────────────────────────────
+    # These tests guard against the bug where BPE's word-level regex stripped
+    # [MASK] brackets, causing fill-mask to always return 422.
+
+    def test_mask_token_preserved_in_encode(self, trained_tokenizer):
+        """[MASK] must produce token id 4, not be stripped or become [UNK]."""
+        result  = trained_tokenizer.encode("I love [MASK] computing")
+        ids     = result["input_ids"]
+        assert SPECIAL_TOKENS["[MASK]"] in ids, (
+            f"[MASK] id ({SPECIAL_TOKENS['[MASK]']}) not found in {ids}"
+        )
+
+    def test_mask_position_findable(self, trained_tokenizer):
+        """input_ids.index([MASK]) must not raise ValueError."""
+        result = trained_tokenizer.encode("[MASK] systems automation")
+        ids    = result["input_ids"]
+        pos    = ids.index(SPECIAL_TOKENS["[MASK]"])
+        assert pos >= 0
+
+    def test_mask_in_middle_of_sentence(self, trained_tokenizer):
+        """[MASK] mid-sentence must be at a non-boundary position."""
+        result  = trained_tokenizer.encode("neural [MASK] network model")
+        ids     = result["input_ids"]
+        mask_id = SPECIAL_TOKENS["[MASK]"]
+        pos     = ids.index(mask_id)
+        # Should not be first (CLS) or last (SEP)
+        assert 0 < pos < len(ids) - 1
+
+    def test_mask_case_insensitive(self, trained_tokenizer):
+        """Both [MASK] and [mask] should produce the same token id."""
+        ids_upper = trained_tokenizer.encode("[MASK] test")["input_ids"]
+        ids_lower = trained_tokenizer.encode("[mask] test")["input_ids"]
+        assert SPECIAL_TOKENS["[MASK]"] in ids_upper
+        assert SPECIAL_TOKENS["[MASK]"] in ids_lower
+
 
 # ── Transformer shapes ────────────────────────────────────────────────────────
 

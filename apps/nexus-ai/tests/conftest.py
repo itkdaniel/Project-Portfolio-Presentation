@@ -164,6 +164,7 @@ def _make_test_app(mock_model=None, mock_tokenizer=None, mock_redis=None):
     app.state.model        = model
     app.state.tokenizer    = tokenizer
     app.state.redis        = mock_redis
+    app.state.batcher      = None   # no cross-request batching in unit tests
     app.state.startup_time = time.monotonic()
 
     app.include_router(ai_router)

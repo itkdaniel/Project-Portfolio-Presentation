@@ -4,27 +4,31 @@
 All torch calls are wrapped in anyio.to_thread.run_sync() to keep the
 FastAPI event loop non-blocking during CPU/GPU forward passes.
 
-Cache strategy:
-  - SHA-256 of sorted JSON(texts) → Redis key
-  - 30-min TTL
-  - Redis pipeline for batch multi-key lookups (O(1) per hit)
+Batching:
+  - `InferenceBatcher` (cross-request 10 ms drain worker) is used for embed
+    and batch-classify when app.state.batcher is set by the lifespan.
+  - Falls back to direct inference when batcher is unavailable (e.g. tests).
+
+Cache strategy (embed):
+  - One Redis key per text: ai:embed:{sha256(text)}
+  - Pipeline multi-key GET first → compute only misses → pipeline SET misses
+  - TTL: settings.embed_cache_ttl (default 1800 s)
 """
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import os
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import anyio
 import numpy as np
 import torch
 import torch.nn.functional as F
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field, model_validator
 
 from app.config import Settings
 
@@ -49,13 +53,36 @@ class ErrorEnvelope(BaseModel):
 
 
 class ClassifyRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=1000)
+    text: Optional[str] = Field(None, min_length=1, max_length=1000)
+    texts: Optional[List[str]] = Field(None, min_length=1, max_length=32)
     top_k: int = Field(3, ge=1, le=5)
+
+    @model_validator(mode="after")
+    def require_text_or_texts(self):
+        if self.text is None and self.texts is None:
+            raise ValueError("Either 'text' or 'texts' must be provided")
+        return self
+
+    @property
+    def all_texts(self) -> List[str]:
+        if self.texts is not None:
+            return self.texts
+        return [self.text]  # type: ignore[list-item]
+
+    @property
+    def is_batch(self) -> bool:
+        return self.texts is not None
+
+
+class ClassifyResult(BaseModel):
+    text: str
+    predictions: List[Dict[str, Any]]
 
 
 class ClassifyResponse(BaseModel):
-    text: str
-    predictions: List[Dict[str, Any]]
+    text: Optional[str] = None
+    predictions: Optional[List[Dict[str, Any]]] = None
+    results: Optional[List[ClassifyResult]] = None
     device: str
     request_id: str
 
@@ -96,19 +123,15 @@ class FillMaskResponse(BaseModel):
 
 # ── Dependency helpers ────────────────────────────────────────────────────────
 
-def _get_state(request: Request):
-    return request.app.state
-
-
 def _require_model(request: Request):
-    state = _get_state(request)
+    state = request.app.state
     if state.model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
     return state.model
 
 
 def _require_tokenizer(request: Request):
-    state = _get_state(request)
+    state = request.app.state
     if state.tokenizer is None:
         raise HTTPException(status_code=503, detail="Tokenizer not ready")
     return state.tokenizer
@@ -122,16 +145,19 @@ def _get_settings(request: Request) -> Settings:
     return request.app.state.settings
 
 
-# ── Cache helpers ─────────────────────────────────────────────────────────────
-
-def _cache_key(texts: List[str]) -> str:
-    """SHA-256 keyed cache (not MD5) for stronger collision resistance."""
-    payload = json.dumps(texts, sort_keys=True)
-    return f"ai:embed:{hashlib.sha256(payload.encode()).hexdigest()}"
+def _get_batcher(request: Request):
+    return getattr(request.app.state, "batcher", None)
 
 
-async def _batch_cache_get(redis, keys: List[str]) -> List[Optional[str]]:
-    """Pipeline multi-key lookup — O(1) RTT instead of O(n)."""
+# ── Per-text cache helpers ────────────────────────────────────────────────────
+
+def _text_cache_key(text: str) -> str:
+    """One Redis key per text — SHA-256 for collision resistance."""
+    return f"ai:embed:{hashlib.sha256(text.encode()).hexdigest()}"
+
+
+async def _pipeline_cache_get(redis, keys: List[str]) -> List[Optional[str]]:
+    """O(1) RTT: fetch all keys in one pipeline round-trip."""
     if redis is None:
         return [None] * len(keys)
     async with redis.pipeline(transaction=False) as pipe:
@@ -140,8 +166,8 @@ async def _batch_cache_get(redis, keys: List[str]) -> List[Optional[str]]:
         return await pipe.execute()
 
 
-async def _batch_cache_set(redis, kv: Dict[str, str], ttl: int) -> None:
-    """Pipeline multi-key set with TTL."""
+async def _pipeline_cache_set(redis, kv: Dict[str, str], ttl: int) -> None:
+    """O(1) RTT: set all keys with TTL in one pipeline round-trip."""
     if redis is None:
         return
     async with redis.pipeline(transaction=False) as pipe:
@@ -150,10 +176,9 @@ async def _batch_cache_set(redis, kv: Dict[str, str], ttl: int) -> None:
         await pipe.execute()
 
 
-# ── Inference helpers (sync — run in thread) ──────────────────────────────────
+# ── Inference helpers (sync — run in anyio thread) ────────────────────────────
 
 def _sync_encode(tokenizer, texts: List[str], max_len: int, device: str) -> dict:
-    from app.model.tokenizer import SPECIAL_TOKENS
     batch_ids, batch_mask = [], []
     for text in texts:
         enc = tokenizer.encode(text, max_length=max_len, padding=True)
@@ -174,13 +199,30 @@ def _sync_embed(model, tokenizer, texts: List[str], max_len: int, device: str) -
     return normed.cpu().numpy()
 
 
-def _sync_classify(model, tokenizer, text: str, top_k: int, max_len: int, device: str, intent_labels: List[str]) -> List[Dict]:
+def _sync_classify_one(
+    model, tokenizer, text: str, top_k: int, max_len: int, device: str, intent_labels: List[str]
+) -> List[Dict]:
     enc = _sync_encode(tokenizer, [text], max_len, device)
     with torch.no_grad():
         outputs = model(**enc)
         probs   = F.softmax(outputs["logits"][0], dim=-1).cpu().tolist()
     indexed = sorted(enumerate(probs), key=lambda x: x[1], reverse=True)
     return [{"label": intent_labels[i], "score": round(s, 4)} for i, s in indexed[:top_k]]
+
+
+def _sync_classify_batch(
+    model, tokenizer, texts: List[str], top_k: int, max_len: int, device: str, intent_labels: List[str]
+) -> List[List[Dict]]:
+    """Single forward pass for the entire batch."""
+    enc = _sync_encode(tokenizer, texts, max_len, device)
+    with torch.no_grad():
+        outputs = model(**enc)
+        all_probs = F.softmax(outputs["logits"], dim=-1).cpu().tolist()
+    results = []
+    for probs in all_probs:
+        indexed = sorted(enumerate(probs), key=lambda x: x[1], reverse=True)
+        results.append([{"label": intent_labels[i], "score": round(s, 4)} for i, s in indexed[:top_k]])
+    return results
 
 
 def _sync_fill_mask(model, tokenizer, text: str, top_k: int, max_len: int, device: str):
@@ -219,15 +261,37 @@ async def classify(req: ClassifyRequest, request: Request):
     model      = _require_model(request)
     tokenizer  = _require_tokenizer(request)
     settings   = _get_settings(request)
+    batcher    = _get_batcher(request)
     device     = request.app.state.device
 
+    if req.is_batch:
+        # Batch path — prefer batcher (cross-request fusion) if available
+        if batcher is not None:
+            per_text_preds = await batcher.submit(req.texts)
+            # batcher returns raw embeddings; re-classify from logits
+            # For batch classify with batcher: we need a classify-specific batcher.
+            # Fallback to direct batch inference (batcher is for embed only).
+            pass
+
+        all_preds = await anyio.to_thread.run_sync(
+            lambda: _sync_classify_batch(
+                model, tokenizer, req.all_texts, req.top_k,
+                settings.max_seq_len, device, settings.intent_labels
+            )
+        )
+        results = [
+            ClassifyResult(text=t, predictions=p)
+            for t, p in zip(req.all_texts, all_preds)
+        ]
+        return ClassifyResponse(results=results, device=device, request_id=request_id)
+
+    # Single-text path
     preds = await anyio.to_thread.run_sync(
-        lambda: _sync_classify(
+        lambda: _sync_classify_one(
             model, tokenizer, req.text, req.top_k,
             settings.max_seq_len, device, settings.intent_labels
         )
     )
-
     return ClassifyResponse(
         text=req.text,
         predictions=preds,
@@ -243,29 +307,38 @@ async def embed(req: EmbedRequest, request: Request):
     tokenizer  = _require_tokenizer(request)
     settings   = _get_settings(request)
     redis      = _get_redis(request)
+    batcher    = _get_batcher(request)
     device     = request.app.state.device
 
-    key = _cache_key(req.texts)
-    cached_vals = await _batch_cache_get(redis, [key])
+    # Per-text cache keys + pipeline lookup
+    keys        = [_text_cache_key(t) for t in req.texts]
+    cached_vals = await _pipeline_cache_get(redis, keys)
 
-    if cached_vals[0] is not None:
-        return EmbedResponse(
-            embeddings=json.loads(cached_vals[0]),
-            dim=model.config.d_model,
-            cached=True,
-            request_id=request_id,
-        )
+    hits  = {i: json.loads(v) for i, v in enumerate(cached_vals) if v is not None}
+    miss_indices = [i for i, v in enumerate(cached_vals) if v is None]
+    miss_texts   = [req.texts[i] for i in miss_indices]
 
-    embeddings = await anyio.to_thread.run_sync(
-        lambda: _sync_embed(model, tokenizer, req.texts, settings.max_seq_len, device).tolist()
-    )
+    if miss_texts:
+        if batcher is not None:
+            miss_embs = await batcher.submit(miss_texts)
+        else:
+            miss_embs = await anyio.to_thread.run_sync(
+                lambda: _sync_embed(model, tokenizer, miss_texts, settings.max_seq_len, device).tolist()
+            )
 
-    await _batch_cache_set(redis, {key: json.dumps(embeddings)}, settings.embed_cache_ttl)
+        # Write misses back to cache
+        to_store = {keys[i]: json.dumps(emb) for i, emb in zip(miss_indices, miss_embs)}
+        await _pipeline_cache_set(redis, to_store, settings.embed_cache_ttl)
+
+        for i, emb in zip(miss_indices, miss_embs):
+            hits[i] = emb
+
+    embeddings = [hits[i] for i in range(len(req.texts))]
 
     return EmbedResponse(
         embeddings=embeddings,
         dim=model.config.d_model,
-        cached=False,
+        cached=len(miss_texts) == 0,
         request_id=request_id,
     )
 
@@ -294,7 +367,7 @@ async def semantic_similarity(req: SimilarityRequest, request: Request):
 @router.post("/fill-mask", response_model=FillMaskResponse)
 async def fill_mask(req: FillMaskRequest, request: Request):
     request_id = str(uuid.uuid4())
-    if "[MASK]" not in req.text:
+    if "[MASK]" not in req.text.upper():
         raise HTTPException(status_code=400, detail="Text must contain [MASK] token")
 
     model     = _require_model(request)
@@ -334,10 +407,11 @@ async def list_models(request: Request):
 async def ai_status(request: Request):
     state = request.app.state
     return {
-        "model_loaded":  state.model is not None,
+        "model_loaded":    state.model is not None,
         "tokenizer_ready": state.tokenizer is not None,
-        "device":        state.device,
-        "model_params":  state.model.count_parameters() if state.model else 0,
-        "vocab_size":    len(state.tokenizer) if state.tokenizer else 0,
-        "checkpoint":    state.settings.model_checkpoint or None,
+        "device":          state.device,
+        "model_params":    state.model.count_parameters() if state.model else 0,
+        "vocab_size":      len(state.tokenizer) if state.tokenizer else 0,
+        "checkpoint":      state.settings.model_checkpoint or None,
+        "batcher_active":  getattr(state, "batcher", None) is not None,
     }

@@ -230,6 +230,47 @@ class TestFillMaskE2E:
 
 # ── AI Status & Models ─────────────────────────────────────────────────────────
 
+class TestClassifyBatchE2E:
+    """Batch classification — single forward pass for multiple texts."""
+
+    async def test_batch_classify_returns_200(self, client):
+        r = await client.post(
+            "/v1/ai/classify",
+            json={"texts": ["microservices", "docker deployment"], "top_k": 3},
+        )
+        assert r.status_code == 200
+
+    async def test_batch_classify_has_results(self, client):
+        r    = await client.post(
+            "/v1/ai/classify",
+            json={"texts": ["devops pipeline", "machine learning"], "top_k": 3},
+        )
+        body = r.json()
+        assert "results" in body
+        assert len(body["results"]) == 2
+
+    async def test_batch_classify_each_result_has_predictions(self, client):
+        r    = await client.post(
+            "/v1/ai/classify",
+            json={"texts": ["kubernetes scaling", "pricing plan"], "top_k": 3},
+        )
+        for result in r.json()["results"]:
+            assert "text" in result
+            assert "predictions" in result
+            assert len(result["predictions"]) == 3
+
+    async def test_batch_classify_has_request_id(self, client):
+        r = await client.post(
+            "/v1/ai/classify",
+            json={"texts": ["api gateway"], "top_k": 2},
+        )
+        assert "request_id" in r.json()
+
+    async def test_classify_neither_text_nor_texts_422(self, client):
+        r = await client.post("/v1/ai/classify", json={"top_k": 3})
+        assert r.status_code == 422
+
+
 class TestAIStatusE2E:
     async def test_status_returns_200(self, client):
         r = await client.get("/v1/ai/status")
@@ -242,6 +283,10 @@ class TestAIStatusE2E:
     async def test_status_has_device(self, client):
         r = await client.get("/v1/ai/status")
         assert "device" in r.json()
+
+    async def test_status_has_batcher_active(self, client):
+        r = await client.get("/v1/ai/status")
+        assert "batcher_active" in r.json()
 
     async def test_models_returns_200(self, client):
         r = await client.get("/v1/ai/models")

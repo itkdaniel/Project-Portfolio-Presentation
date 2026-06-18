@@ -4,20 +4,22 @@ NexusAI — Standalone PyTorch transformer inference service.
 Architecture:
   - Factory pattern: create_app(settings) for test isolation
   - Lifespan: load model + tokenizer at startup, unload at shutdown
-  - Redis: SHA-256 keyed embedding cache (30-min TTL)
-  - Inference batching: asyncio.Queue drain worker (10ms window)
+  - Redis: SHA-256 keyed embedding cache (30-min TTL, per-text keys)
+  - Inference batching: InferenceBatcher asyncio.Queue drain worker (10ms)
+    Merges concurrent embed requests into one forward pass, then fans out
+    results to each waiting caller via asyncio.Future.
   - Non-blocking: anyio.to_thread.run_sync() wraps all torch calls
   - Standard error envelope: {error, code, details, request_id}
 
 Endpoints:
   GET  /health         — {status, service, version, uptime, device, model_loaded}
   GET  /info           — {name, version, endpoints[], port}
-  POST /v1/ai/classify — intent classification (top-k)
-  POST /v1/ai/embed    — L2-normalized embeddings (cached)
+  POST /v1/ai/classify — intent classification, single + batch (top-k)
+  POST /v1/ai/embed    — L2-normalized embeddings (per-text cached)
   POST /v1/ai/similarity — cosine similarity
-  POST /v1/ai/fill-mask  — masked token prediction
+  POST /v1/ai/fill-mask  — masked token prediction ([MASK] preserved through BPE)
   GET  /v1/ai/models   — list checkpoints
-  GET  /v1/ai/status   — model load status + device info
+  GET  /v1/ai/status   — model load status + device info + batcher state
 """
 from __future__ import annotations
 
@@ -25,10 +27,13 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import List, Optional
 
+import anyio
+import numpy as np
 import structlog
 import torch
+import torch.nn.functional as F
 import redis.asyncio as aioredis
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -91,6 +96,19 @@ def _build_tokenizer(settings: Settings):
     return tok
 
 
+def _make_embed_fn(model, tokenizer, max_seq_len: int, device: str):
+    """
+    Return a sync function suitable for InferenceBatcher.model_fn.
+    Receives a flat list of texts, returns a list of embedding lists.
+    """
+    from app.routers.ai import _sync_embed
+
+    def _embed(texts: List[str]) -> List[List[float]]:
+        return _sync_embed(model, tokenizer, texts, max_seq_len, device).tolist()
+
+    return _embed
+
+
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
     """
     Application factory.
@@ -113,32 +131,48 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         app.state.model        = None
         app.state.tokenizer    = None
         app.state.redis        = None
+        app.state.batcher      = None
         app.state.startup_time = _startup_time[0]
 
-        redis = None
+        # ── Redis ─────────────────────────────────────────────────────────────
+        redis_client = None
         try:
-            redis = aioredis.from_url(settings.redis_url, decode_responses=True)
-            await redis.ping()
-            app.state.redis = redis
+            redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
+            await redis_client.ping()
+            app.state.redis = redis_client
             logger.info("Redis connected", url=settings.redis_url)
         except Exception as exc:
             logger.warning("Redis unavailable — cache disabled", error=str(exc))
 
+        # ── Model + tokenizer ─────────────────────────────────────────────────
         try:
-            import anyio
             model     = await anyio.to_thread.run_sync(lambda: _build_and_load_model(settings, device))
             tokenizer = await anyio.to_thread.run_sync(lambda: _build_tokenizer(settings))
             app.state.model     = model
             app.state.tokenizer = tokenizer
-            n_params = model.count_parameters()
-            logger.info("Model ready", params=f"{n_params:,}", device=device)
+            logger.info("Model ready", params=f"{model.count_parameters():,}", device=device)
+
+            # ── InferenceBatcher (cross-request 10ms drain worker) ────────────
+            from app.batch import InferenceBatcher
+            embed_fn = _make_embed_fn(model, tokenizer, settings.max_seq_len, device)
+            batcher  = InferenceBatcher(model_fn=embed_fn, drain_ms=10.0, max_batch=32)
+            await batcher.start()
+            app.state.batcher = batcher
+            logger.info("Inference batcher started", drain_ms=10)
+
         except Exception as exc:
             logger.error("Model load failed", error=str(exc))
 
         yield
 
-        if redis:
-            await redis.aclose()
+        # ── Shutdown ──────────────────────────────────────────────────────────
+        if app.state.batcher is not None:
+            await app.state.batcher.stop()
+            logger.info("Inference batcher stopped")
+
+        if redis_client is not None:
+            await redis_client.aclose()
+
         logger.info("NexusAI service shut down")
 
     app = FastAPI(
@@ -165,8 +199,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.get("/health", tags=["health"])
     async def health(request: Request):
-        state   = request.app.state
-        uptime  = time.monotonic() - getattr(state, "startup_time", time.monotonic())
+        state  = request.app.state
+        uptime = time.monotonic() - getattr(state, "startup_time", time.monotonic())
         return {
             "status":       "ok",
             "service":      settings.app_name,
@@ -198,7 +232,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
         request_id = str(uuid.uuid4())
-        logger.error("Unhandled exception", error=str(exc), path=request.url.path, request_id=request_id)
+        logger.error(
+            "Unhandled exception",
+            error=str(exc),
+            path=request.url.path,
+            request_id=request_id,
+        )
         return JSONResponse(
             status_code=500,
             content={

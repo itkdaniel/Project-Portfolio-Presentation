@@ -9,6 +9,13 @@ Algorithm (Sennrich et al., 2016):
   5. Encode text by applying learned merges greedily
 
 Special tokens: [PAD]=0, [UNK]=1, [CLS]=2, [SEP]=3, [MASK]=4
+
+Special-token handling in encode():
+  The input text is pre-split on special-token patterns BEFORE BPE so that
+  [MASK] (and its siblings) are preserved as token-id 4 rather than stripped
+  by the word-level regex.  Example:
+      "I love [MASK] computing"
+       → CLS, i, love, MASK(4), computing, SEP
 """
 from __future__ import annotations
 import re
@@ -21,6 +28,11 @@ from typing import Dict, List, Tuple, Optional
 SPECIAL_TOKENS = {"[PAD]": 0, "[UNK]": 1, "[CLS]": 2, "[SEP]": 3, "[MASK]": 4}
 SPECIAL_IDS    = {v: k for k, v in SPECIAL_TOKENS.items()}
 END_OF_WORD    = "##"
+
+# Pattern that splits on any special token, capturing it in the split results.
+_SPECIAL_SPLIT_RE = re.compile(
+    r"(\[(?:PAD|UNK|CLS|SEP|MASK)\])", re.IGNORECASE
+)
 
 
 class Vocabulary:
@@ -163,17 +175,37 @@ class BPETokenizer:
         max_length: int = 512,
         padding: bool = False,
     ) -> Dict[str, List[int]]:
-        words   = re.findall(r"[a-zA-Z0-9']+", text.lower())
-        tokens  = []
-        for word in words:
-            tokens.extend(self._tokenize_word(word))
+        """
+        Encode text to token IDs.
 
-        ids = [self.vocab.encode_token(t) for t in tokens]
+        Special tokens (e.g. [MASK]) are preserved verbatim — the input is
+        split on them BEFORE the word-level BPE regex runs so they are never
+        accidentally stripped.
+        """
+        ids: List[int] = []
 
         if add_special_tokens:
-            ids = [SPECIAL_TOKENS["[CLS]"]] + ids + [SPECIAL_TOKENS["[SEP]"]]
+            ids.append(SPECIAL_TOKENS["[CLS]"])
 
-        ids = ids[:max_length]
+        # Split on special-token markers, keeping them as separate parts.
+        parts = _SPECIAL_SPLIT_RE.split(text)
+        for part in parts:
+            if not part:
+                continue
+            upper = part.upper()
+            if upper in SPECIAL_TOKENS:
+                # Direct special-token ID — no BPE needed
+                ids.append(SPECIAL_TOKENS[upper])
+            else:
+                # Normal text — apply BPE word-by-word
+                for word in re.findall(r"[a-zA-Z0-9']+", part.lower()):
+                    tokens = self._tokenize_word(word)
+                    ids.extend(self.vocab.encode_token(t) for t in tokens)
+
+        if add_special_tokens:
+            ids.append(SPECIAL_TOKENS["[SEP]"])
+
+        ids  = ids[:max_length]
         mask = [1] * len(ids)
 
         if padding and len(ids) < max_length:
