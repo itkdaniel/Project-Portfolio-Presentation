@@ -3,6 +3,7 @@ import { Footer } from "@/components/layout/Footer";
 import { Hero } from "@/components/sections/Hero";
 import { ProjectShowcase } from "@/components/sections/ProjectShowcase";
 import { Services } from "@/components/sections/Services";
+import { SubAppGateway } from "@/components/sections/SubAppGateway";
 
 export default function Home() {
   return (
@@ -11,6 +12,7 @@ export default function Home() {
       <main className="flex-1">
         <Hero />
         <Services />
+        <SubAppGateway />
         <ProjectShowcase />
       </main>
       <Footer />

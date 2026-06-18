@@ -133,6 +133,81 @@ Test placement:
 
 ---
 
+## Adding a New Sub-App to the Gateway
+
+The API gateway (`server/gateway.ts`) maintains a static registry of all standalone microservices. Follow these steps to scaffold and register a new sub-app.
+
+### 1. Create the standalone service repo
+
+Structure your service following the nexus-booking / nexus-ai conventions:
+
+```
+nexus-<name>/
+├── app/
+│   ├── main.py          # FastAPI app with lifespan, CORS, /health, /openapi.json
+│   ├── routers/         # Feature routers (mounted under /v1/<name>/...)
+│   └── ...
+├── Dockerfile
+├── requirements.txt
+└── README.md
+```
+
+Required endpoints:
+- `GET /health` — returns `{"status": "ok"}` and HTTP 200 when healthy
+- `GET /openapi.json` — standard FastAPI OpenAPI spec (built-in via FastAPI)
+
+### 2. Add an env var
+
+In `.env` (local) and as a Kubernetes/Docker secret (production):
+
+```
+SUB_APP_<NAME>_URL=http://localhost:<PORT>
+```
+
+Fallback chain in `server/gateway.ts`: `SUB_APP_*` → `NEXUS_*` → `http://localhost:<default_port>`.
+
+### 3. Register in `server/gateway.ts`
+
+Add an entry to the array returned by `buildRegistry()`:
+
+```ts
+{
+  name: "<name>",                         // lowercase slug, must be URL-safe
+  label: "Nexus <Name>",
+  description: "One-line description.",
+  baseUrl: resolveUrl("SUB_APP_<NAME>_URL", "NEXUS_<NAME>_URL", <PORT>),
+  port: <PORT>,
+  healthPath: "/health",
+  openApiPath: "/openapi.json",
+  tags: ["FastAPI", "Python", ...],
+  githubUrl: "https://github.com/itkdaniel/nexus-<name>",
+},
+```
+
+### 4. Verify gateway routes
+
+After restarting the dev server, confirm:
+
+```bash
+curl http://localhost:5000/api/apps               # registry (length +1)
+curl http://localhost:5000/api/apps/<name>         # new entry
+curl http://localhost:5000/api/apps/<name>/health  # healthy / unhealthy
+curl http://localhost:5000/api/apps/<name>/openapi # proxied OpenAPI spec
+```
+
+### 5. Write gateway unit tests
+
+Add a test block in `tests/unit/gateway.test.ts` asserting:
+- The registry contains the new `name`
+- `checkHealth()` returns the correct shape
+- Default port resolves correctly when env vars are absent
+
+### 6. Frontend
+
+The `SubAppGateway` component in `client/src/components/sections/SubAppGateway.tsx` automatically reads from `/api/apps` and renders a card for every registered sub-app. Add an icon and color to the `APP_ICONS` / `APP_COLORS` / `APP_ICON_COLORS` maps for the new name to get the styled card treatment.
+
+---
+
 ## Questions?
 
 Open a GitHub Discussion or reach out at team@nexusconsult.dev.

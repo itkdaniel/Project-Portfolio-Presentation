@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { eq } from "drizzle-orm";
+import { buildRegistry, checkHealth, checkAllHealth, proxyToSubApp } from "./gateway";
 import { storage } from "./storage";
 import { pubsub } from "./pubsub";
 import { db } from "./db";
@@ -937,6 +938,103 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await seedTaxData(parseInt(taxYear));
       return res.json({ message: `Tax year ${taxYear} seeded successfully.` });
     } catch (e) { return res.status(500).json({ message: "Seed failed" }); }
+  });
+
+  // ── API Gateway — Sub-App Registry ────────────────────────────────────────
+  //
+  // Exposes a unified registry of the four standalone NexusConsult microservices
+  // and provides parallel health checking + transparent HTTP proxying.
+  //
+  // Routes:
+  //   GET  /api/apps                    — list all registered sub-apps
+  //   GET  /api/apps/:name              — single sub-app metadata
+  //   GET  /api/apps/:name/health       — live health check for one sub-app
+  //   GET  /api/apps/health             — parallel health check for all sub-apps
+  //   GET  /api/apps/:name/openapi      — proxy to sub-app's OpenAPI spec
+  //   ANY  /api/apps/:name/proxy/*      — transparent HTTP proxy to sub-app
+
+  // GET /api/apps — return the full sub-app registry
+  app.get("/api/apps", (_req, res) => {
+    const registry = buildRegistry();
+    return res.json(registry);
+  });
+
+  // GET /api/apps/health — parallel health check for all sub-apps
+  // NOTE: must be registered before /api/apps/:name to avoid shadowing
+  app.get("/api/apps/health", async (_req, res) => {
+    try {
+      const results = await checkAllHealth();
+      return res.json(results);
+    } catch (e) {
+      console.error("gateway health-all error:", e);
+      return res.status(500).json({ message: "Health check failed" });
+    }
+  });
+
+  // GET /api/apps/:name — single sub-app metadata
+  app.get("/api/apps/:name", (req, res) => {
+    const registry = buildRegistry();
+    const app2 = registry.find((a) => a.name === req.params.name);
+    if (!app2) return res.status(404).json({ message: `Sub-app '${req.params.name}' not found` });
+    return res.json(app2);
+  });
+
+  // GET /api/apps/:name/health — health check for one sub-app
+  app.get("/api/apps/:name/health", async (req, res) => {
+    const registry = buildRegistry();
+    const app2 = registry.find((a) => a.name === req.params.name);
+    if (!app2) return res.status(404).json({ message: `Sub-app '${req.params.name}' not found` });
+    try {
+      const result = await checkHealth(app2);
+      const statusCode = result.status === "healthy" ? 200 : 503;
+      return res.status(statusCode).json(result);
+    } catch (e) {
+      console.error(`gateway health error [${req.params.name}]:`, e);
+      return res.status(503).json({ name: req.params.name, status: "unhealthy" });
+    }
+  });
+
+  // GET /api/apps/:name/openapi — proxy OpenAPI spec from sub-app
+  app.get("/api/apps/:name/openapi", async (req, res) => {
+    const registry = buildRegistry();
+    const app2 = registry.find((a) => a.name === req.params.name);
+    if (!app2) return res.status(404).json({ message: `Sub-app '${req.params.name}' not found` });
+    try {
+      const { status, data, contentType } = await proxyToSubApp(
+        app2, "GET", app2.openApiPath, req.headers as Record<string, string>
+      );
+      res.status(status).setHeader("Content-Type", contentType);
+      return res.json(data);
+    } catch (e) {
+      console.error(`gateway openapi error [${req.params.name}]:`, e);
+      return res.status(503).json({ message: `${req.params.name} service unavailable` });
+    }
+  });
+
+  // ANY /api/apps/:name/proxy/... — transparent HTTP proxy to sub-app
+  // Using app.use() instead of app.all() to avoid path-to-regexp wildcard issues
+  // with named params + bare `*` in newer Express versions.
+  app.use("/api/apps/:name/proxy", async (req: Request, res: Response) => {
+    const registry = buildRegistry();
+    const name = req.params.name as string;
+    const app2 = registry.find((a) => a.name === name);
+    if (!app2) return res.status(404).json({ message: `Sub-app '${name}' not found` });
+
+    // req.path here is relative to the mount point (/api/apps/:name/proxy)
+    const subPath = req.path || "/";
+    const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+
+    try {
+      const { status, data, contentType } = await proxyToSubApp(
+        app2, req.method, `${subPath}${qs}`, req.headers as Record<string, string>,
+        ["GET", "HEAD", "DELETE"].includes(req.method) ? undefined : req.body,
+      );
+      res.status(status).setHeader("Content-Type", contentType);
+      return res.json(data);
+    } catch (e) {
+      console.error(`gateway proxy error [${name}]:`, e);
+      return res.status(503).json({ message: `${name} service unavailable` });
+    }
   });
 
   return httpServer;
