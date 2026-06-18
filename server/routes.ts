@@ -624,6 +624,39 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   await seedTaxData(TAX_YEAR);
   initTaxScheduler().catch(console.error);
 
+  // ── Portfolio gateway proxy → nexus-tax microservice ──────────────────────
+  //
+  // When NEXUS_TAX_URL is set (e.g. "http://localhost:8003"), all /api/tax/*
+  // requests are forwarded to the standalone nexus-tax service at
+  //   /v1/tax/* (mapping: /api/tax/foo → /v1/tax/foo)
+  //
+  // When NEXUS_TAX_URL is not set, requests fall through to the direct
+  // handlers below (monolith-embedded implementation).
+  const NEXUS_TAX_URL = process.env.NEXUS_TAX_URL?.replace(/\/$/, "");
+  if (NEXUS_TAX_URL) {
+    app.all("/api/tax/*", async (req: Request, res: Response) => {
+      const subPath = req.path.replace(/^\/api\/tax/, "");
+      const targetUrl = `${NEXUS_TAX_URL}/v1/tax${subPath}${req.search ?? ""}`;
+      try {
+        const upstream = await fetch(targetUrl, {
+          method: req.method,
+          headers: {
+            "Content-Type": "application/json",
+            ...(req.headers.authorization ? { Authorization: req.headers.authorization as string } : {}),
+          },
+          body: ["GET", "HEAD", "DELETE"].includes(req.method) ? undefined : JSON.stringify(req.body),
+        });
+        const body = await upstream.text();
+        res.status(upstream.status);
+        res.setHeader("Content-Type", upstream.headers.get("content-type") || "application/json");
+        return res.send(body);
+      } catch (err) {
+        console.error("nexus-tax proxy error:", err);
+        return res.status(502).json({ message: "nexus-tax service unavailable", nexusTaxUrl: NEXUS_TAX_URL });
+      }
+    });
+  }
+
   // GET /api/tax/periods
   app.get("/api/tax/periods", async (_req, res) => {
     try {
