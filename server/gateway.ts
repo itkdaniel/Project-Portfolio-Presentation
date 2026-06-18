@@ -10,7 +10,7 @@
  * well-known localhost ports when running in a local dev environment.
  */
 
-import type { Request, Response } from "express";
+import type { Request, Response as ExpressResponse } from "express";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -275,7 +275,7 @@ const FORWARD_RESPONSE_HEADERS = [
 export async function proxyToSubApp(
   appInfo: SubAppInfo,
   req: Request,
-  res: Response,
+  res: ExpressResponse,
   subPath: string,
 ): Promise<void> {
   const url = `${appInfo.baseUrl}${subPath}`;
@@ -303,7 +303,7 @@ export async function proxyToSubApp(
       typeof req.body === "string" ? req.body : JSON.stringify(req.body);
   }
 
-  let upstream: Response;
+  let upstream: Awaited<ReturnType<typeof fetch>>;
   try {
     upstream = await fetch(url, init);
   } catch (err) {

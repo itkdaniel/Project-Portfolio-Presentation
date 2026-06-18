@@ -771,7 +771,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   if (NEXUS_TAX_URL) {
     app.all("/api/tax/*", async (req: Request, res: Response) => {
       const subPath = req.path.replace(/^\/api\/tax/, "");
-      const targetUrl = `${NEXUS_TAX_URL}/v1/tax${subPath}${req.search ?? ""}`;
+      const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+      const targetUrl = `${NEXUS_TAX_URL}/v1/tax${subPath}${qs}`;
       try {
         const upstream = await fetch(targetUrl, {
           method: req.method,
