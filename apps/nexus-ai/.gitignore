@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.hypothesis/
+*.egg-info/
+dist/
+build/
+.env
+.venv/
+venv/
+checkpoints/
+model/tokenizer/
+*.pt
+*.log
+.DS_Store

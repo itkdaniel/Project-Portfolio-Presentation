@@ -34,6 +34,13 @@ const NEXUS_BOOKING_URL = process.env.NEXUS_BOOKING_URL || "";
 // Falls back to the local storage list when the env var is absent.
 const NEXUS_SEARCH_URL = process.env.NEXUS_SEARCH_URL || "";
 
+// ── nexus-ai gateway URL ────────────────────────────────────────────────────
+// When NEXUS_AI_URL is set (e.g. http://localhost:8001 in production /
+// docker-compose), all /api/ai/* requests are proxied to the standalone
+// nexus-ai PyTorch inference service. Falls back to local heuristic
+// classifiers when the env var is absent.
+const NEXUS_AI_URL = process.env.NEXUS_AI_URL || "";
+
 /**
  * Proxy a request to the nexus-search microservice, forwarding query
  * parameters and the Authorization header transparently.
@@ -47,6 +54,29 @@ async function proxyToSearchService(
   // Preserve the original query string (e.g. ?q=auth&tags=jwt)
   const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
   const url = `${NEXUS_SEARCH_URL}${path}${qs}`;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (req.headers.authorization) {
+    headers["Authorization"] = req.headers.authorization;
+  }
+  const init: RequestInit = { method, headers };
+  if (body !== undefined) init.body = JSON.stringify(body);
+  const resp = await fetch(url, init);
+  let data: unknown;
+  try { data = await resp.json(); } catch { data = null; }
+  return { status: resp.status, data };
+}
+
+/**
+ * Proxy a request to the nexus-ai PyTorch inference service.
+ * Maps /api/ai/* → /v1/ai/* on the nexus-ai service.
+ */
+async function proxyToAiService(
+  method: string,
+  path: string,
+  req: Request,
+  body?: unknown,
+): Promise<{ status: number; data: unknown }> {
+  const url = `${NEXUS_AI_URL}${path}`;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (req.headers.authorization) {
     headers["Authorization"] = req.headers.authorization;
@@ -581,8 +611,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     },
   ];
 
-  // POST /api/ai/classify — classify text (mirrors: nexus ai classify)
+  // POST /api/ai/classify — proxied to nexus-ai when NEXUS_AI_URL is set
   app.post("/api/ai/classify", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    if (NEXUS_AI_URL) {
+      const { status, data } = await proxyToAiService("POST", "/v1/ai/classify", req, req.body);
+      return res.status(status).json(data);
+    }
+    // Local fallback: heuristic keyword classifier
     const { text } = req.body;
     if (!text || typeof text !== "string" || text.trim().length === 0) {
       return res.status(400).json({ message: "text is required and must be non-empty" });
@@ -590,7 +625,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const tokens = new Set(tokenize(text));
     const scored = AI_CLASSES.map(cls => {
       const matches = cls.keywords.filter(k => tokens.has(k)).length;
-      const score   = matches / cls.keywords.length + (Math.random() * 0.05); // tiny noise
+      const score   = matches / cls.keywords.length + (Math.random() * 0.05);
       return { label: cls.label, score };
     });
     const total  = scored.reduce((s, c) => s + c.score, 0) || 1;
@@ -601,8 +636,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ label: best.label, confidence: best.score, scores });
   });
 
-  // POST /api/ai/embed — generate text embedding (mirrors: nexus ai embed)
+  // POST /api/ai/embed — proxied to nexus-ai when NEXUS_AI_URL is set
   app.post("/api/ai/embed", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    if (NEXUS_AI_URL) {
+      const { status, data } = await proxyToAiService("POST", "/v1/ai/embed", req, req.body);
+      return res.status(status).json(data);
+    }
+    // Local fallback
     const { text } = req.body;
     if (!text || typeof text !== "string" || text.trim().length === 0) {
       return res.status(400).json({ message: "text is required and must be non-empty" });
@@ -611,13 +651,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ embedding, dimensions: embedding.length, model: "nexus-embedder" });
   });
 
-  // POST /api/ai/similarity — cosine similarity of two texts (mirrors: nexus ai similarity)
+  // POST /api/ai/similarity — proxied to nexus-ai when NEXUS_AI_URL is set
   app.post("/api/ai/similarity", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    if (NEXUS_AI_URL) {
+      const { status, data } = await proxyToAiService("POST", "/v1/ai/similarity", req, req.body);
+      return res.status(status).json(data);
+    }
+    // Local fallback
     const { text_a, text_b } = req.body;
     if (!text_a || !text_b) {
       return res.status(400).json({ message: "text_a and text_b are required" });
     }
-    // Identical texts → perfect score
     if (text_a.trim() === text_b.trim()) {
       return res.json({ similarity: 1.0, interpretation: "identical" });
     }
@@ -632,12 +676,34 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ similarity: sim, interpretation });
   });
 
-  // GET /api/ai/models — list model registry (mirrors: nexus model list)
-  app.get("/api/ai/models", requireAuth as any, async (_req, res) => {
+  // POST /api/ai/fill-mask — proxied to nexus-ai; no local fallback
+  app.post("/api/ai/fill-mask", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    if (NEXUS_AI_URL) {
+      const { status, data } = await proxyToAiService("POST", "/v1/ai/fill-mask", req, req.body);
+      return res.status(status).json(data);
+    }
+    return res.status(503).json({ message: "NEXUS_AI_URL not configured" });
+  });
+
+  // GET /api/ai/status — proxied to nexus-ai when NEXUS_AI_URL is set
+  app.get("/api/ai/status", requireAuth as any, async (req, res) => {
+    if (NEXUS_AI_URL) {
+      const { status, data } = await proxyToAiService("GET", "/v1/ai/status", req);
+      return res.status(status).json(data);
+    }
+    return res.json({ model_loaded: false, device: "cpu", note: "NEXUS_AI_URL not configured" });
+  });
+
+  // GET /api/ai/models — proxied to nexus-ai; falls back to local registry
+  app.get("/api/ai/models", requireAuth as any, async (req, res) => {
+    if (NEXUS_AI_URL) {
+      const { status, data } = await proxyToAiService("GET", "/v1/ai/models", req);
+      return res.status(status).json(data);
+    }
     return res.json(MODEL_REGISTRY);
   });
 
-  // GET /api/ai/models/:id — model details (mirrors: nexus model info)
+  // GET /api/ai/models/:id — model details (local registry fallback only)
   app.get("/api/ai/models/:id", requireAuth as any, async (req, res) => {
     const model = MODEL_REGISTRY.find(m => m.id === req.params.id);
     if (!model) return res.status(404).json({ message: `Model '${req.params.id}' not found` });
