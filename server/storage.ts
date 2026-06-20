@@ -1,19 +1,21 @@
 import { eq, desc, and } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, projects, bookings, inquiries, userSettings, emailConfig,
-  type User, type InsertUser,
+  users, projects, bookings, inquiries, userSettings, emailConfig, resumes,
+  type User, type InsertUser, type UpdateProfile,
   type Project, type InsertProject,
   type Booking, type InsertBooking,
   type Inquiry, type InsertInquiry,
   type UserSettings, type InsertUserSettings, type UpdateUserSettings,
   type EmailConfig, type UpdateEmailConfig,
+  type Resume, type UpdateResume,
   taxPeriods, federalForms, stateForms, taxBrackets, standardDeductions,
   specialTaxRates, taxQuestions, formRequirementRules, questionnaireSessions,
   type TaxPeriod, type FederalForm, type StateForm, type TaxBracket,
   type StandardDeduction, type SpecialTaxRate, type TaxQuestion,
   type FormRequirementRule, type QuestionnaireSession, type InsertSession,
 } from "@shared/schema";
+import { encryptField, decryptField } from "./crypto";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -21,6 +23,10 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUserPassword(id: string, hashedPassword: string): Promise<User | undefined>;
+  updateUserProfile(id: string, data: UpdateProfile): Promise<User | undefined>;
+
+  getResume(userId: string): Promise<Resume | undefined>;
+  upsertResume(userId: string, data: UpdateResume): Promise<Resume>;
 
   getProjects(): Promise<Project[]>;
   getProject(id: string): Promise<Project | undefined>;
@@ -80,6 +86,49 @@ export class DatabaseStorage implements IStorage {
   async updateUserPassword(id: string, hashedPassword: string) {
     const [u] = await db.update(users).set({ password: hashedPassword }).where(eq(users.id, id)).returning();
     return u;
+  }
+
+  async updateUserProfile(id: string, data: UpdateProfile) {
+    const toStore: Partial<typeof users.$inferInsert> = {};
+    if (data.fullName   !== undefined) toStore.fullName   = data.fullName;
+    if (data.bio        !== undefined) toStore.bio        = data.bio;
+    if (data.position   !== undefined) toStore.position   = data.position;
+    if (data.profilePictureUrl !== undefined) toStore.profilePictureUrl = data.profilePictureUrl;
+    if (data.mobile     !== undefined) toStore.mobile     = data.mobile   ? encryptField(data.mobile)   : data.mobile;
+    if (data.location   !== undefined) toStore.location   = data.location ? encryptField(data.location) : data.location;
+    const [u] = await db.update(users).set(toStore).where(eq(users.id, id)).returning();
+    if (!u) return u;
+    return this._decryptUser(u);
+  }
+
+  private _decryptUser(u: User): User {
+    return {
+      ...u,
+      mobile:   u.mobile   ? decryptField(u.mobile)   : u.mobile,
+      location: u.location ? decryptField(u.location) : u.location,
+    };
+  }
+
+  async getResume(userId: string) {
+    const [r] = await db.select().from(resumes).where(eq(resumes.userId, userId));
+    return r;
+  }
+
+  async upsertResume(userId: string, data: UpdateResume): Promise<Resume> {
+    const existing = await this.getResume(userId);
+    if (existing) {
+      const [updated] = await db
+        .update(resumes)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(resumes.userId, userId))
+        .returning();
+      return updated;
+    }
+    const [created] = await db
+      .insert(resumes)
+      .values({ userId, sections: data.sections ?? [], ...data })
+      .returning();
+    return created;
   }
 
   async getProjects() {

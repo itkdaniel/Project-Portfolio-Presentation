@@ -8,7 +8,7 @@ import { db } from "./db";
 import { users } from "@shared/schema";
 import {
   insertProjectSchema, insertBookingSchema, insertInquirySchema, loginSchema,
-  updateUserSettingsSchema, updateEmailConfigSchema,
+  updateUserSettingsSchema, updateEmailConfigSchema, updateProfileSchema, updateResumeSchema, registerSchema,
 } from "@shared/schema";
 import { ZodError } from "zod";
 import { requireAuth, requireAdmin, generateToken, hashPassword, seedAdminUser, CORP_ROLE_SEED, DATA_RATING_SEED, type AuthenticatedRequest } from "./auth";
@@ -20,7 +20,26 @@ import {
   sendBookingNotificationToAdmin,
   sendTestEmail,
   getEmailConfig,
+  sendEmail,
 } from "./email";
+import multer from "multer";
+import { v4 as uuidv4 } from "uuid";
+import { mkdirSync } from "fs";
+import { join } from "path";
+
+// ── Upload directory setup ─────────────────────────────────────────────────
+const UPLOADS_DIR = join(process.cwd(), "uploads", "resumes");
+try { mkdirSync(UPLOADS_DIR, { recursive: true }); } catch {}
+
+const resumeUpload = multer({
+  dest: UPLOADS_DIR,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["application/pdf", "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+    cb(null, allowed.includes(file.mimetype));
+  },
+});
 
 // ── nexus-booking gateway URL ──────────────────────────────────────────────
 // When NEXUS_BOOKING_URL is set (e.g. http://localhost:8003 in production /
@@ -145,9 +164,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     try {
-      const { username, email, password } = req.body;
+      const { username, email, password, fullName } = req.body;
       if (!username || !email || !password) {
         return res.status(400).json({ message: "username, email, and password required" });
+      }
+      // Validate fullName if provided
+      if (fullName !== undefined && (!fullName || fullName.trim().length < 2)) {
+        return res.status(400).json({ message: "Full name must be at least 2 characters" });
       }
       const [existing] = await db.select().from(users).where(eq(users.email, email));
       if (existing) return res.status(409).json({ message: "Email already registered" });
@@ -156,9 +179,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         username, email,
         password: hashPassword(password),
         role: "user",
+        ...(fullName ? { fullName: fullName.trim() } : {}),
       }).returning();
       const token = generateToken(user.id, user.role);
-      return res.status(201).json({ token, user: { id: user.id, username: user.username, email: user.email, role: user.role } });
+
+      // Fire-and-forget confirmation email
+      const cfg = await getEmailConfig();
+      if (cfg?.enabled) {
+        sendEmail({
+          to: email,
+          subject: "Welcome to NexusConsult — Account Confirmed",
+          html: `
+<!DOCTYPE html><html><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#09090b;font-family:'Inter',Arial,sans-serif;color:#e4e4e7;">
+<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:40px 20px;">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#18181b;border-radius:12px;border:1px solid rgba(255,255,255,0.08);">
+<tr><td style="background:linear-gradient(135deg,#1e3a5f 0%,#1a1a2e 100%);padding:40px;text-align:center;">
+<h1 style="margin:0;font-size:24px;font-weight:700;color:#f4f4f5;">Welcome, ${fullName || username}!</h1>
+<p style="margin:8px 0 0;color:#a1a1aa;">Your NexusConsult account is ready.</p>
+</td></tr>
+<tr><td style="padding:32px 40px;">
+<p style="color:#d4d4d8;">Your account has been created. You can now log in and explore all features.</p>
+<p style="color:#71717a;font-size:12px;margin-top:24px;">NexusConsult — Automation &amp; Consulting Services</p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`,
+          text: `Welcome, ${fullName || username}! Your NexusConsult account is ready. Log in at https://nexusconsult.dev`,
+        }).catch(() => {});
+      }
+
+      return res.status(201).json({ token, user: { id: user.id, username: user.username, email: user.email, role: user.role, fullName: user.fullName } });
     } catch (e) {
       const { status, body } = zodErr(e);
       return res.status(status).json(body);
@@ -166,10 +216,71 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.get("/api/auth/me", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
-    const [user] = await db.select({ id: users.id, username: users.username, email: users.email, role: users.role, corpRoleId: users.corpRoleId })
-      .from(users).where(eq(users.id, req.user!.id));
+    const user = await storage.getUser(req.user!.id);
     if (!user) return res.status(404).json({ message: "User not found" });
-    return res.json({ ...user, corpRoleId: user.corpRoleId ?? 1 });
+    const { password: _pw, ...safe } = user;
+    return res.json({ ...safe, corpRoleId: safe.corpRoleId ?? 1 });
+  });
+
+  // ── User Profile ─────────────────────────────────────────────────────────
+
+  // PATCH /api/users/profile — update extended profile fields (fullName, mobile, location, bio, profilePictureUrl, position)
+  app.patch("/api/users/profile", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const data = updateProfileSchema.parse(req.body);
+      const updated = await storage.updateUserProfile(req.user!.id, data);
+      if (!updated) return res.status(404).json({ message: "User not found" });
+      const { password: _pw, ...safe } = updated;
+      return res.json(safe);
+    } catch (e) {
+      const { status, body } = zodErr(e);
+      return res.status(status).json(body);
+    }
+  });
+
+  // ── Resumé ───────────────────────────────────────────────────────────────
+
+  // GET /api/resume — get the authenticated user's resumé
+  app.get("/api/resume", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    let resume = await storage.getResume(req.user!.id);
+    if (!resume) {
+      // Auto-create with default sections
+      resume = await storage.upsertResume(req.user!.id, {
+        sections: [
+          { title: "Summary",    content: "" },
+          { title: "Experience", content: "" },
+          { title: "Skills",     content: "" },
+          { title: "Education",  content: "" },
+        ],
+      });
+    }
+    return res.json(resume);
+  });
+
+  // PATCH /api/resume — update resumé sections and/or file metadata
+  app.patch("/api/resume", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const data = updateResumeSchema.parse(req.body);
+      const updated = await storage.upsertResume(req.user!.id, data);
+      return res.json(updated);
+    } catch (e) {
+      const { status, body } = zodErr(e);
+      return res.status(status).json(body);
+    }
+  });
+
+  // POST /api/resume/upload — upload a PDF/DOCX file for the file view
+  app.post("/api/resume/upload", requireAuth as any, resumeUpload.single("file"), async (req: AuthenticatedRequest, res: Response) => {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded or unsupported file type (PDF/DOCX only)" });
+    }
+    const fileUrl = `/uploads/resumes/${req.file.filename}`;
+    const updated = await storage.upsertResume(req.user!.id, {
+      fileUrl,
+      fileName:        req.file.originalname,
+      fileContentType: req.file.mimetype,
+    });
+    return res.json({ fileUrl, fileName: req.file.originalname, resume: updated });
   });
 
   // ── Search — proxied to nexus-search when configured ──────────────────

@@ -9,6 +9,9 @@ import TestDashboard from "@/pages/TestDashboard";
 import Settings from "@/pages/Settings";
 import TaxAssistant from "@/pages/TaxAssistant";
 import StatusPage from "@/pages/StatusPage";
+import ResumePage from "@/pages/ResumePage";
+import RegisterPage from "@/pages/RegisterPage";
+import LoginPage from "@/pages/LoginPage";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -20,6 +23,9 @@ function Router() {
       <Route path="/settings" component={Settings}/>
       <Route path="/tax" component={TaxAssistant}/>
       <Route path="/status" component={StatusPage}/>
+      <Route path="/resume" component={ResumePage}/>
+      <Route path="/register" component={RegisterPage}/>
+      <Route path="/login" component={LoginPage}/>
       <Route component={NotFound} />
     </Switch>
   );

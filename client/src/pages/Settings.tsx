@@ -240,8 +240,50 @@ export default function Settings() {
 
 // ── Profile Section ───────────────────────────────────────────────────────────
 
+interface ExtendedProfile {
+  fullName?: string;
+  position?: string;
+  mobile?: string;
+  location?: string;
+  bio?: string;
+  profilePictureUrl?: string;
+}
+
+function useExtendedProfile(token: string | null) {
+  const qc = useQueryClient();
+  const { data: me, isLoading } = useQuery<ExtendedProfile & { username: string; email: string }>({
+    queryKey: ["/api/auth/me"],
+    queryFn: async () => {
+      const res = await fetch("/api/auth/me", { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!res.ok) throw new Error("Not authenticated");
+      return res.json();
+    },
+    enabled: !!token,
+    retry: false,
+  });
+
+  const save = useMutation({
+    mutationFn: async (data: ExtendedProfile) => {
+      const res = await fetch("/api/users/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/auth/me"] }),
+  });
+
+  return { me, isLoading, save };
+}
+
 function ProfileSection({ settings, onSave, saving }: { settings: UserSettingsData; onSave: (d: any) => void; saving: boolean }) {
-  const [form, setForm] = useState({
+  const token = typeof localStorage !== "undefined" ? localStorage.getItem("nexus_token") : null;
+  const { toast } = useToast();
+  const { me, save } = useExtendedProfile(token);
+
+  const [settingsForm, setSettingsForm] = useState({
     displayName: settings.displayName ?? "",
     bio:         settings.bio ?? "",
     avatarUrl:   settings.avatarUrl ?? "",
@@ -249,70 +291,170 @@ function ProfileSection({ settings, onSave, saving }: { settings: UserSettingsDa
     language:    settings.language,
   });
 
+  const [profileForm, setProfileForm] = useState<ExtendedProfile>({
+    fullName:          "",
+    position:          "",
+    mobile:            "",
+    location:          "",
+    bio:               "",
+    profilePictureUrl: "",
+  });
+
+  const [profileInitialized, setProfileInitialized] = useState(false);
+
+  if (me && !profileInitialized) {
+    setProfileForm({
+      fullName:          me.fullName ?? "",
+      position:          me.position ?? "",
+      mobile:            me.mobile ?? "",
+      location:          me.location ?? "",
+      bio:               me.bio ?? "",
+      profilePictureUrl: me.profilePictureUrl ?? "",
+    });
+    setProfileInitialized(true);
+  }
+
+  const pf = (k: keyof ExtendedProfile) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setProfileForm(f => ({ ...f, [k]: e.target.value }));
+
+  async function handleProfileSave() {
+    try {
+      await save.mutateAsync(profileForm);
+      toast({ title: "Profile updated" });
+    } catch (e: any) {
+      toast({ title: "Error saving profile", description: e.message, variant: "destructive" });
+    }
+  }
+
+  const initials = ((profileForm.fullName || me?.username) ?? "?").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="displayName">Display Name</Label>
-          <Input id="displayName" data-testid="input-displayName" value={form.displayName}
-            onChange={e => setForm(f => ({ ...f, displayName: e.target.value }))}
-            placeholder="Your name" className="bg-background/50" />
+    <div className="space-y-8">
+      {/* Extended profile — backed by /api/users/profile */}
+      <div className="space-y-5">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Professional Info</h3>
+
+        {/* Avatar preview */}
+        <div className="flex items-center gap-4">
+          {profileForm.profilePictureUrl ? (
+            <img src={profileForm.profilePictureUrl} alt="Avatar"
+              className="w-16 h-16 rounded-full object-cover border-2 border-primary/20"
+              onError={e => (e.currentTarget.style.display = "none")} />
+          ) : (
+            <div className="w-16 h-16 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center">
+              <span className="text-xl font-bold text-primary">{initials}</span>
+            </div>
+          )}
+          <div className="flex-1 space-y-1.5">
+            <Label htmlFor="profilePictureUrl">Profile Picture URL</Label>
+            <Input id="profilePictureUrl" data-testid="input-profilePictureUrl" value={profileForm.profilePictureUrl ?? ""}
+              onChange={pf("profilePictureUrl")} placeholder="https://…" className="bg-background/50" />
+          </div>
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="avatarUrl">Avatar URL</Label>
-          <Input id="avatarUrl" data-testid="input-avatarUrl" value={form.avatarUrl}
-            onChange={e => setForm(f => ({ ...f, avatarUrl: e.target.value }))}
-            placeholder="https://…" className="bg-background/50" />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="fullName">Full Name</Label>
+            <Input id="fullName" data-testid="input-fullName" value={profileForm.fullName ?? ""}
+              onChange={pf("fullName")} placeholder="Jane Smith" className="bg-background/50" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="position">Job Title / Position</Label>
+            <Input id="position" data-testid="input-position" value={profileForm.position ?? ""}
+              onChange={pf("position")} placeholder="Senior Engineer" className="bg-background/50" />
+          </div>
         </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="mobile">Mobile</Label>
+            <Input id="mobile" data-testid="input-mobile" value={profileForm.mobile ?? ""}
+              onChange={pf("mobile")} placeholder="+1 555 000 0000" className="bg-background/50" />
+            <p className="text-xs text-muted-foreground">Stored encrypted at rest.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="location">Location</Label>
+            <Input id="location" data-testid="input-location" value={profileForm.location ?? ""}
+              onChange={pf("location")} placeholder="San Francisco, CA" className="bg-background/50" />
+            <p className="text-xs text-muted-foreground">Stored encrypted at rest.</p>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="profile-bio">Bio</Label>
+          <Textarea id="profile-bio" data-testid="input-profile-bio" value={profileForm.bio ?? ""}
+            onChange={pf("bio")} placeholder="A short bio shown on your resumé…"
+            rows={3} className="bg-background/50 resize-none" />
+        </div>
+
+        <Button onClick={handleProfileSave} disabled={save.isPending} data-testid="btn-save-profile" className="gap-2">
+          {save.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          Save Profile
+        </Button>
       </div>
 
-      {form.avatarUrl && (
-        <div className="flex items-center gap-3">
-          <img src={form.avatarUrl} alt="Avatar preview" className="w-12 h-12 rounded-full object-cover border border-white/10" onError={e => (e.currentTarget.style.display = "none")} />
-          <span className="text-xs text-muted-foreground">Avatar preview</span>
+      <Separator />
+
+      {/* Display settings — backed by /api/settings */}
+      <div className="space-y-5">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Display &amp; Preferences</h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="displayName">Display Name</Label>
+            <Input id="displayName" data-testid="input-displayName" value={settingsForm.displayName}
+              onChange={e => setSettingsForm(f => ({ ...f, displayName: e.target.value }))}
+              placeholder="Your name" className="bg-background/50" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="avatarUrl">Avatar URL (Settings)</Label>
+            <Input id="avatarUrl" data-testid="input-avatarUrl" value={settingsForm.avatarUrl}
+              onChange={e => setSettingsForm(f => ({ ...f, avatarUrl: e.target.value }))}
+              placeholder="https://…" className="bg-background/50" />
+          </div>
         </div>
-      )}
 
-      <div className="space-y-1.5">
-        <Label htmlFor="bio">Bio</Label>
-        <Textarea id="bio" data-testid="input-bio" value={form.bio}
-          onChange={e => setForm(f => ({ ...f, bio: e.target.value }))}
-          placeholder="A short bio about yourself…" rows={3} className="bg-background/50 resize-none" />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-1.5">
-          <Label>Timezone</Label>
-          <Select value={form.timezone} onValueChange={v => setForm(f => ({ ...f, timezone: v }))}>
-            <SelectTrigger data-testid="select-timezone" className="bg-background/50">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {["UTC","America/New_York","America/Chicago","America/Denver","America/Los_Angeles","Europe/London","Europe/Berlin","Asia/Tokyo","Asia/Shanghai","Australia/Sydney"].map(tz => (
-                <SelectItem key={tz} value={tz}>{tz}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Label htmlFor="settings-bio">Bio (Display Settings)</Label>
+          <Textarea id="settings-bio" data-testid="input-bio" value={settingsForm.bio}
+            onChange={e => setSettingsForm(f => ({ ...f, bio: e.target.value }))}
+            placeholder="Short bio…" rows={2} className="bg-background/50 resize-none" />
         </div>
-        <div className="space-y-1.5">
-          <Label>Language</Label>
-          <Select value={form.language} onValueChange={v => setForm(f => ({ ...f, language: v }))}>
-            <SelectTrigger data-testid="select-language" className="bg-background/50">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="en">English</SelectItem>
-              <SelectItem value="es">Español</SelectItem>
-              <SelectItem value="fr">Français</SelectItem>
-              <SelectItem value="de">Deutsch</SelectItem>
-              <SelectItem value="zh">中文</SelectItem>
-              <SelectItem value="ja">日本語</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
 
-      <SaveButton onClick={() => onSave(form)} saving={saving} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label>Timezone</Label>
+            <Select value={settingsForm.timezone} onValueChange={v => setSettingsForm(f => ({ ...f, timezone: v }))}>
+              <SelectTrigger data-testid="select-timezone" className="bg-background/50">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["UTC","America/New_York","America/Chicago","America/Denver","America/Los_Angeles","Europe/London","Europe/Berlin","Asia/Tokyo","Asia/Shanghai","Australia/Sydney"].map(tz => (
+                  <SelectItem key={tz} value={tz}>{tz}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Language</Label>
+            <Select value={settingsForm.language} onValueChange={v => setSettingsForm(f => ({ ...f, language: v }))}>
+              <SelectTrigger data-testid="select-language" className="bg-background/50">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="en">English</SelectItem>
+                <SelectItem value="es">Español</SelectItem>
+                <SelectItem value="fr">Français</SelectItem>
+                <SelectItem value="de">Deutsch</SelectItem>
+                <SelectItem value="zh">中文</SelectItem>
+                <SelectItem value="ja">日本語</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <SaveButton onClick={() => onSave(settingsForm)} saving={saving} />
+      </div>
     </div>
   );
 }

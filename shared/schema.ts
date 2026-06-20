@@ -39,13 +39,20 @@ export type DataRating = typeof dataRatings.$inferSelect;
 
 // ── Users ──────────────────────────────────────────────────────────────────
 export const users = pgTable("users", {
-  id:         varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username:   text("username").notNull().unique(),
-  email:      text("email").notNull().unique(),
-  password:   text("password").notNull(),
-  role:       userRoleEnum("role").notNull().default("user"),
-  corpRoleId: integer("corp_role_id").default(1),      // FK → corp_roles.id
-  createdAt:  timestamp("created_at").notNull().defaultNow(),
+  id:                varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  username:          text("username").notNull().unique(),
+  email:             text("email").notNull().unique(),
+  password:          text("password").notNull(),
+  role:              userRoleEnum("role").notNull().default("user"),
+  corpRoleId:        integer("corp_role_id").default(1),
+  // Extended profile fields
+  fullName:          text("full_name"),
+  mobile:            text("mobile"),           // stored encrypted
+  location:          text("location"),         // stored encrypted
+  bio:               text("bio"),
+  profilePictureUrl: text("profile_picture_url"),
+  position:          text("position"),         // job title / role label
+  createdAt:         timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
@@ -53,8 +60,47 @@ export const loginSchema = z.object({
   email:    z.string().email(),
   password: z.string().min(6),
 });
+export const registerSchema = z.object({
+  username:  z.string().min(2, "Username must be at least 2 characters"),
+  email:     z.string().email("Invalid email address"),
+  password:  z.string().min(8, "Password must be at least 8 characters"),
+  fullName:  z.string().min(2, "Full name must be at least 2 characters").regex(/\S.*\S|\S/, "Full name required"),
+});
+export const updateProfileSchema = z.object({
+  fullName:          z.string().min(2).optional(),
+  mobile:            z.string().max(30).optional(),
+  location:          z.string().max(100).optional(),
+  bio:               z.string().max(500).optional(),
+  profilePictureUrl: z.string().optional(),
+  position:          z.string().max(100).optional(),
+});
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type UpdateProfile = z.infer<typeof updateProfileSchema>;
 export type User = typeof users.$inferSelect;
+
+// ── Resumés ────────────────────────────────────────────────────────────────
+export const resumes = pgTable("resumes", {
+  id:              serial("id").primaryKey(),
+  userId:          varchar("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  sections:        jsonb("sections").notNull().default(sql`'[]'::jsonb`), // [{title, content}]
+  fileUrl:         text("file_url"),
+  fileName:        text("file_name"),
+  fileContentType: text("file_content_type"),
+  activeView:      text("active_view").notNull().default("digital"), // "digital" | "file"
+  updatedAt:       timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertResumeSchema = createInsertSchema(resumes).omit({ id: true, updatedAt: true });
+export const updateResumeSchema = z.object({
+  sections:    z.array(z.object({ title: z.string(), content: z.string() })).optional(),
+  fileUrl:     z.string().optional(),
+  fileName:    z.string().optional(),
+  fileContentType: z.string().optional(),
+  activeView:  z.enum(["digital", "file"]).optional(),
+});
+export type InsertResume = z.infer<typeof insertResumeSchema>;
+export type UpdateResume = z.infer<typeof updateResumeSchema>;
+export type Resume = typeof resumes.$inferSelect;
 
 // ── Projects ───────────────────────────────────────────────────────────────
 export const projects = pgTable("projects", {
