@@ -67,17 +67,30 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  private _decryptUser(u: User): User {
+    try {
+      return {
+        ...u,
+        mobile:   u.mobile   ? decryptField(u.mobile)   : u.mobile,
+        location: u.location ? decryptField(u.location) : u.location,
+      };
+    } catch {
+      // If decryption fails (e.g., plaintext stored before encryption was added), return raw
+      return u;
+    }
+  }
+
   async getUser(id: string) {
     const [u] = await db.select().from(users).where(eq(users.id, id));
-    return u;
+    return u ? this._decryptUser(u) : u;
   }
   async getUserByUsername(username: string) {
     const [u] = await db.select().from(users).where(eq(users.username, username));
-    return u;
+    return u ? this._decryptUser(u) : u;
   }
   async getUserByEmail(email: string) {
     const [u] = await db.select().from(users).where(eq(users.email, email));
-    return u;
+    return u ? this._decryptUser(u) : u;
   }
   async createUser(data: InsertUser) {
     const [u] = await db.insert(users).values(data).returning();
@@ -99,14 +112,6 @@ export class DatabaseStorage implements IStorage {
     const [u] = await db.update(users).set(toStore).where(eq(users.id, id)).returning();
     if (!u) return u;
     return this._decryptUser(u);
-  }
-
-  private _decryptUser(u: User): User {
-    return {
-      ...u,
-      mobile:   u.mobile   ? decryptField(u.mobile)   : u.mobile,
-      location: u.location ? decryptField(u.location) : u.location,
-    };
   }
 
   async getResume(userId: string) {

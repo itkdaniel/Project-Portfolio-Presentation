@@ -59,4 +59,3 @@ timeoutMs = 120000
 [userenv]
 
 [userenv.shared]
-FIELD_ENCRYPTION_KEY = "b55971e46a79552d22c26022c2be9750ef349b347213b74050aefda13c60854d"

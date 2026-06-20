@@ -47,10 +47,10 @@ export default function RegisterPage() {
         else toast({ title: "Registration failed", description: data.message, variant: "destructive" });
         return;
       }
-      localStorage.setItem("nexus_token", data.token);
+      // Do NOT auto-login — show success and redirect to /login
       setSuccess(true);
-      toast({ title: "Account created!", description: "A confirmation email has been sent. Redirecting…" });
-      setTimeout(() => navigate("/settings"), 2000);
+      toast({ title: "Account created!", description: "Please sign in with your new credentials." });
+      setTimeout(() => navigate("/login"), 2500);
     } catch {
       toast({ title: "Network error", description: "Please try again.", variant: "destructive" });
     } finally {

@@ -280,6 +280,7 @@ function useExtendedProfile(token: string | null) {
 
 function ProfileSection({ settings, onSave, saving }: { settings: UserSettingsData; onSave: (d: any) => void; saving: boolean }) {
   const token = typeof localStorage !== "undefined" ? localStorage.getItem("nexus_token") : null;
+  const isGuest = !token;
   const { toast } = useToast();
   const { me, save } = useExtendedProfile(token);
 
@@ -330,8 +331,17 @@ function ProfileSection({ settings, onSave, saving }: { settings: UserSettingsDa
 
   return (
     <div className="space-y-8">
+      {/* Guest read-only banner */}
+      {isGuest && (
+        <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground" data-testid="profile-guest-notice">
+          <span className="font-medium text-foreground">Read-only mode.</span>{" "}
+          <a href="/login" className="text-primary hover:underline">Sign in</a> or{" "}
+          <a href="/register" className="text-primary hover:underline">create an account</a> to edit your profile.
+        </div>
+      )}
+
       {/* Extended profile — backed by /api/users/profile */}
-      <div className="space-y-5">
+      <fieldset disabled={isGuest} className="space-y-5 disabled:opacity-60">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Professional Info</h3>
 
         {/* Avatar preview */}
@@ -387,11 +397,11 @@ function ProfileSection({ settings, onSave, saving }: { settings: UserSettingsDa
             rows={3} className="bg-background/50 resize-none" />
         </div>
 
-        <Button onClick={handleProfileSave} disabled={save.isPending} data-testid="btn-save-profile" className="gap-2">
+        <Button onClick={handleProfileSave} disabled={save.isPending || isGuest} data-testid="btn-save-profile" className="gap-2">
           {save.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           Save Profile
         </Button>
-      </div>
+      </fieldset>
 
       <Separator />
 

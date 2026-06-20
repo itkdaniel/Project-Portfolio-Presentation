@@ -164,14 +164,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     try {
-      const { username, email, password, fullName } = req.body;
-      if (!username || !email || !password) {
-        return res.status(400).json({ message: "username, email, and password required" });
+      const parsed = registerSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Validation error" });
       }
-      // Validate fullName if provided
-      if (fullName !== undefined && (!fullName || fullName.trim().length < 2)) {
-        return res.status(400).json({ message: "Full name must be at least 2 characters" });
-      }
+      const { username, email, password, fullName } = parsed.data;
       const [existing] = await db.select().from(users).where(eq(users.email, email));
       if (existing) return res.status(409).json({ message: "Email already registered" });
 
