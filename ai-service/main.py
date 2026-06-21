@@ -397,13 +397,13 @@ class TorStatusResponse(BaseModel):
     error: Optional[str]
 
 
-@app.get("/ai/tor/status", response_model=TorStatusResponse, tags=["tor"])
+@app.get("/v1/ai/tor/status", response_model=TorStatusResponse, tags=["tor"])
 async def tor_status():
     """Return current Tor daemon status: running, circuit established, bootstrap %."""
     return tor_manager.get_status()
 
 
-@app.post("/ai/tor/new-circuit", tags=["tor"])
+@app.post("/v1/ai/tor/new-circuit", tags=["tor"])
 async def tor_new_circuit():
     """Request a new Tor identity (NEWNYM signal). Resets exit node and circuit."""
     ok = await tor_manager.new_circuit()
@@ -419,7 +419,7 @@ class OnionScrapeRequest(BaseModel):
     depth: int = Field(1, ge=1, le=3)
 
 
-@app.post("/scrape/onion", tags=["scraping"])
+@app.post("/v1/scrape/onion", tags=["scraping"])
 async def scrape_onion(req: OnionScrapeRequest):
     """
     Relay an onion-scrape request to NexusScraper using Tor SOCKS5 proxy.
@@ -448,7 +448,7 @@ async def scrape_onion(req: OnionScrapeRequest):
 
 # ── Uncensored mode endpoints ──────────────────────────────────────────────────
 
-@app.post("/ai/classify/uncensored", response_model=ClassifyResponse, tags=["uncensored"])
+@app.post("/v1/ai/classify/uncensored", response_model=ClassifyResponse, tags=["uncensored"])
 async def classify_uncensored(req: ClassifyRequest, request: Request):
     """
     Uncensored classification — identical to /ai/classify but bypasses any
@@ -468,7 +468,7 @@ async def classify_uncensored(req: ClassifyRequest, request: Request):
     return ClassifyResponse(text=req.text, predictions=preds, device=DEVICE)
 
 
-@app.post("/ai/fill-mask/uncensored", tags=["uncensored"])
+@app.post("/v1/ai/fill-mask/uncensored", tags=["uncensored"])
 async def fill_mask_uncensored(req: FillMaskRequest, request: Request):
     """
     Uncensored fill-mask — identical to /ai/fill-mask but bypasses keyword blocklist.

@@ -1,8 +1,9 @@
 """
 Tor network manager for NexusAI service.
 
-Manages a Tor daemon subprocess providing a SOCKS5 proxy at 127.0.0.1:9050.
-Uses stem library for circuit monitoring and NEWNYM (new-identity) signaling.
+Manages a Tor daemon launched via stem.process.launch_tor_with_config().
+Uses the stem library for circuit event monitoring, bootstrap progress,
+and NEWNYM (new-identity) signaling via the Tor control port.
 
 Usage:
     from tor_manager import tor_manager
@@ -13,13 +14,8 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import hmac
 import os
 import shutil
-import subprocess
-import tempfile
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -27,54 +23,26 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
-_TOR_BINARY      = shutil.which("tor") or "/usr/bin/tor"
-_SOCKS_PORT      = int(os.getenv("TOR_SOCKS_PORT", "9050"))
-_CONTROL_PORT    = int(os.getenv("TOR_CONTROL_PORT", "9051"))
+_TOR_BINARY       = shutil.which("tor") or "/usr/bin/tor"
+_SOCKS_PORT       = int(os.getenv("TOR_SOCKS_PORT", "9050"))
+_CONTROL_PORT     = int(os.getenv("TOR_CONTROL_PORT", "9051"))
 _CONTROL_PASSWORD = os.getenv("TOR_CONTROL_PASSWORD", "nexusai_tor_default")
-_DATA_DIR        = os.getenv("TOR_DATA_DIR", "/tmp/tor_data_nexusai")
-
-
-def _hash_password(plain: str) -> str:
-    """Produce a Tor HashedControlPassword value via stem (or fallback)."""
-    try:
-        from stem.process import get_obfuscated_address  # noqa: F401 — just checking stem is importable
-        from stem.control import Controller
-        _ = Controller  # silence lint
-    except ImportError:
-        pass
-    try:
-        import stem.util.connection
-        _ = stem.util.connection
-    except Exception:
-        pass
-    # Use tor --hash-password subprocess to generate the hash
-    try:
-        result = subprocess.run(
-            [_TOR_BINARY, "--hash-password", plain],
-            capture_output=True, text=True, timeout=10,
-        )
-        hashed = result.stdout.strip()
-        if hashed.startswith("16:"):
-            return hashed
-    except Exception:
-        pass
-    return ""
+_DATA_DIR         = os.getenv("TOR_DATA_DIR", "/tmp/tor_data_nexusai")
 
 
 class TorManager:
     def __init__(self) -> None:
-        self._process: Optional[subprocess.Popen] = None
-        self._data_dir = Path(_DATA_DIR)
-        self._bootstrap_percent: int = 0
+        self._process    = None   # stem process handle
+        self._controller = None   # stem.control.Controller
+        self._bootstrap_percent: int  = 0
         self._circuit_established: bool = False
         self._started: bool = False
         self._start_error: Optional[str] = None
-        self._hashed_password: str = ""
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
     async def start(self) -> None:
-        """Start the Tor daemon in the background. No-op if already running."""
+        """Start Tor via stem.process.launch_tor_with_config(). No-op if already started."""
         if self._started:
             return
         if not _TOR_BINARY or not Path(_TOR_BINARY).exists():
@@ -92,17 +60,17 @@ class TorManager:
         running = self._process is not None and self._process.poll() is None
         if not running and self._started:
             self._circuit_established = False
-            self._bootstrap_percent = 0
+            self._bootstrap_percent   = 0
         return {
-            "running": running,
+            "running":            running,
             "circuitEstablished": self._circuit_established,
-            "bootstrapPercent": self._bootstrap_percent,
-            "socksProxy": f"socks5://127.0.0.1:{_SOCKS_PORT}" if running else None,
-            "error": self._start_error,
+            "bootstrapPercent":   self._bootstrap_percent,
+            "socksProxy":         f"socks5://127.0.0.1:{_SOCKS_PORT}" if running else None,
+            "error":              self._start_error,
         }
 
     async def new_circuit(self) -> bool:
-        """Signal Tor to build a fresh circuit (NEWNYM). Returns True on success."""
+        """Send NEWNYM via stem controller. Returns True on success."""
         try:
             return await asyncio.get_event_loop().run_in_executor(None, self._send_newnym)
         except Exception as e:
@@ -110,53 +78,40 @@ class TorManager:
             return False
 
     def stop(self) -> None:
-        if self._process:
-            self._process.terminate()
+        if self._controller:
             try:
-                self._process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
+                self._controller.close()
+            except Exception:
+                pass
+            self._controller = None
+        if self._process:
+            try:
                 self._process.kill()
+            except Exception:
+                pass
             self._process = None
-            self._started = False
-            self._circuit_established = False
-            self._bootstrap_percent = 0
+        self._started             = False
+        self._circuit_established = False
+        self._bootstrap_percent   = 0
 
     # ── Internal helpers ───────────────────────────────────────────────────────
 
     def _launch(self) -> None:
-        self._data_dir.mkdir(parents=True, exist_ok=True)
+        """Launch Tor using stem.process.launch_tor_with_config (blocking)."""
+        try:
+            import stem.process
+            import stem.control
+            import stem
+        except ImportError as e:
+            raise RuntimeError(f"stem not installed: {e}")
 
-        self._hashed_password = _hash_password(_CONTROL_PASSWORD)
+        data_dir = Path(_DATA_DIR)
+        data_dir.mkdir(parents=True, exist_ok=True)
 
-        torrc_lines = [
-            f"SocksPort {_SOCKS_PORT}",
-            f"ControlPort {_CONTROL_PORT}",
-            f"DataDirectory {self._data_dir}",
-            "Log notice stdout",
-        ]
-        if self._hashed_password:
-            torrc_lines.append(f"HashedControlPassword {self._hashed_password}")
-        else:
-            torrc_lines.append("CookieAuthentication 1")
-
-        torrc_path = self._data_dir / "torrc"
-        torrc_path.write_text("\n".join(torrc_lines) + "\n")
-
-        self._process = subprocess.Popen(
-            [_TOR_BINARY, "-f", str(torrc_path)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        self._started = True
-        logger.info("Tor process started", pid=self._process.pid)
-
-        # Read bootstrap progress from stdout (up to 30s)
-        deadline = time.time() + 30
-        while time.time() < deadline and self._process.poll() is None:
-            line = self._process.stdout.readline()  # type: ignore[union-attr]
-            if not line:
-                break
+        # stem.process.launch_tor_with_config streams bootstrap events and
+        # calls our init_msg_handler with each Tor log line.
+        # It blocks until 100% bootstrap or raises an error.
+        def _bootstrap_handler(line: str) -> None:
             if "Bootstrapped" in line:
                 try:
                     pct = int(line.split("Bootstrapped")[1].split("%")[0].strip())
@@ -164,32 +119,74 @@ class TorManager:
                     if pct >= 100:
                         self._circuit_established = True
                         logger.info("Tor bootstrap complete")
-                        break
                 except (ValueError, IndexError):
                     pass
-            elif "100%" in line or "Done" in line:
-                self._bootstrap_percent = 100
+
+        self._process = stem.process.launch_tor_with_config(
+            tor_cmd=_TOR_BINARY,
+            config={
+                "SocksPort":            str(_SOCKS_PORT),
+                "ControlPort":          str(_CONTROL_PORT),
+                "DataDirectory":        str(data_dir),
+                "CookieAuthentication": "1",
+            },
+            init_msg_handler=_bootstrap_handler,
+            timeout=60,
+            take_ownership=True,
+        )
+
+        self._started = True
+        logger.info("Tor process started via stem", pid=getattr(self._process, "pid", "?"))
+
+        # Connect a persistent stem Controller for NEWNYM signals and circuit events
+        try:
+            controller = stem.control.Controller.from_port(port=_CONTROL_PORT)
+            controller.authenticate()
+            controller.add_event_listener(
+                lambda event: self._on_circuit_event(event),
+                stem.control.EventType.CIRC,
+            )
+            self._controller = controller
+            logger.info("Stem controller connected")
+        except Exception as e:
+            logger.warning("Stem controller connect failed (NEWNYM unavailable)", error=str(e))
+
+    def _on_circuit_event(self, event) -> None:
+        """Update circuit-established flag from stem CIRC events."""
+        try:
+            from stem import CircStatus
+            if event.status == CircStatus.BUILT:
                 self._circuit_established = True
-                logger.info("Tor bootstrap complete")
-                break
+        except Exception:
+            pass
 
     def _send_newnym(self) -> bool:
-        """Authenticate to the Tor control port and send NEWNYM."""
-        import socket
-        with socket.create_connection(("127.0.0.1", _CONTROL_PORT), timeout=5) as s:
-            def send(cmd: str) -> str:
-                s.sendall((cmd + "\r\n").encode())
-                return s.recv(4096).decode()
-            # Authenticate
-            resp = send(f'AUTHENTICATE "{_CONTROL_PASSWORD}"')
-            if not resp.startswith("250"):
-                logger.warning("Tor auth failed", resp=resp)
+        """Send NEWNYM via stem controller to get a fresh Tor identity."""
+        if self._controller is None:
+            logger.warning("No stem controller — attempting reconnect for NEWNYM")
+            try:
+                import stem.control
+                ctrl = stem.control.Controller.from_port(port=_CONTROL_PORT)
+                ctrl.authenticate()
+                self._controller = ctrl
+            except Exception as e:
+                logger.warning("Reconnect failed", error=str(e))
                 return False
-            resp = send("SIGNAL NEWNYM")
-            ok = resp.startswith("250")
-            if ok:
-                logger.info("Tor new circuit requested")
-            return ok
+
+        try:
+            from stem import Signal
+            self._controller.signal(Signal.NEWNYM)
+            logger.info("Tor new circuit requested via stem NEWNYM")
+            return True
+        except Exception as e:
+            logger.warning("stem NEWNYM signal failed", error=str(e))
+            # Controller may be stale — clear it so next call reconnects
+            try:
+                self._controller.close()
+            except Exception:
+                pass
+            self._controller = None
+            return False
 
 
 tor_manager = TorManager()

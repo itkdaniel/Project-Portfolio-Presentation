@@ -579,7 +579,13 @@ export class DatabaseStorage implements IStorage {
     return db
       .select()
       .from(grantedScopes)
-      .where(and(eq(grantedScopes.userId, userId), sql`revoked_at IS NULL`));
+      .where(
+        and(
+          eq(grantedScopes.userId, userId),
+          sql`revoked_at IS NULL`,
+          sql`(expires_at IS NULL OR expires_at > NOW())`,
+        ),
+      );
   }
 
   async hasGrantedScope(userId: string, scope: string): Promise<boolean> {

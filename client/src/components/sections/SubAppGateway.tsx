@@ -104,9 +104,9 @@ interface TorStatus {
 
 function TorStatusPill() {
   const { data, isLoading, isError } = useQuery<TorStatus>({
-    queryKey: ["/api/apps/ai/proxy/ai/tor/status"],
+    queryKey: ["/api/apps/ai/proxy/v1/ai/tor/status"],
     queryFn: async () => {
-      const res = await fetch("/api/apps/ai/proxy/ai/tor/status");
+      const res = await fetch("/api/apps/ai/proxy/v1/ai/tor/status");
       if (!res.ok) throw new Error(`${res.status}`);
       return res.json();
     },
