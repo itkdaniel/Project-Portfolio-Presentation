@@ -1189,11 +1189,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // NOTIFICATIONS
   // ══════════════════════════════════════════════════════════════════════════
 
-  // GET /api/notifications — { unreadCount, notifications } — 20 most recent
+  // GET /api/notifications — { unreadCount, notifications } — full list, newest first
   app.get("/api/notifications", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
-    const all  = await storage.getNotifications(req.user!.id);
-    const unreadCount = all.filter(n => !n.read).length;
-    const notifications = all.slice(0, 20);
+    const notifications = await storage.getNotifications(req.user!.id);
+    const unreadCount   = notifications.filter(n => !n.read).length;
     return res.json({ unreadCount, notifications });
   });
 
@@ -1343,8 +1342,8 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
     }
     const updated = await storage.reviewScopeRequest(
       rid,
-      "system",  // one-click action — no logged-in reviewer
-      { status: action, adminNote: "Approved via one-click email link." },
+      null,  // one-click email action — no authenticated reviewer
+      { status: action, adminNote: "Reviewed via one-click email link." },
     );
     if (updated) {
       await sendNotification(updated.userId, {

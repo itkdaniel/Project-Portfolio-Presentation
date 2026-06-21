@@ -129,7 +129,9 @@ export async function notifyAllAdmins(payload: NotifyPayload): Promise<void> {
 // ── HMAC-signed one-click approval links ──────────────────────────────────────
 
 function getSigningKey(): string {
-  return process.env.FIELD_ENCRYPTION_KEY ?? "dev-fallback-key-do-not-use-in-prod";
+  const key = process.env.FIELD_ENCRYPTION_KEY;
+  if (!key) throw new Error("FIELD_ENCRYPTION_KEY env var is required for signed approval links");
+  return key;
 }
 
 /**

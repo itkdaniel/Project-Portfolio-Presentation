@@ -86,7 +86,7 @@ export interface IStorage {
   getScopeRequestsByUser(userId: string): Promise<ScopeRequest[]>;
   getScopeRequest(id: string): Promise<ScopeRequest | undefined>;
   createScopeRequest(data: InsertScopeRequest): Promise<ScopeRequest>;
-  reviewScopeRequest(id: string, reviewedBy: string, data: UpdateScopeRequest): Promise<ScopeRequest | undefined>;
+  reviewScopeRequest(id: string, reviewedBy: string | null, data: UpdateScopeRequest): Promise<ScopeRequest | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -450,7 +450,7 @@ export class DatabaseStorage implements IStorage {
     return r;
   }
 
-  async reviewScopeRequest(id: string, reviewedBy: string, data: UpdateScopeRequest): Promise<ScopeRequest | undefined> {
+  async reviewScopeRequest(id: string, reviewedBy: string | null, data: UpdateScopeRequest): Promise<ScopeRequest | undefined> {
     const [r] = await db
       .update(scopeRequests)
       .set({ status: data.status, adminNote: data.adminNote, reviewedBy, reviewedAt: new Date() })
