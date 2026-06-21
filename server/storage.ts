@@ -636,6 +636,12 @@ export class DatabaseStorage implements IStorage {
       })
       .from(grantedScopes)
       .leftJoin(users, eq(grantedScopes.userId, users.id))
+      .where(
+        and(
+          sql`${grantedScopes.revokedAt} IS NULL`,
+          sql`(${grantedScopes.expiresAt} IS NULL OR ${grantedScopes.expiresAt} > NOW())`,
+        ),
+      )
       .orderBy(sql`${grantedScopes.grantedAt} DESC`);
     return rows;
   }
