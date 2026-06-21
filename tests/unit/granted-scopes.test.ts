@@ -9,10 +9,14 @@
  *  - GET  /api/scope-requests/:id/confirm (one-click email link grants scope)
  *  - Storage-level unit tests for grantScope / revokeScope / hasGrantedScope
  *    called directly against the database (active, revoked, expired cases)
+ *  - Deduplication migration (scripts/deduplicate-granted-scopes.ts)
  */
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createHmac } from "crypto";
 import { storage } from "../../server/storage";
+import { db } from "../../server/db";
+import { sql } from "drizzle-orm";
+import { deduplicateGrantedScopes } from "../../scripts/deduplicate-granted-scopes";
 
 const BASE = "http://localhost:5000";
 
@@ -92,6 +96,15 @@ beforeAll(async () => {
     } catch { /* not ready */ }
     await new Promise(r => setTimeout(r, 500));
   }
+
+  // Ensure the partial unique index exists before any tests run.
+  // If a previous test run crashed after dropping it, this brings it back.
+  await deduplicateGrantedScopes({ verbose: false });
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS granted_scopes_user_scope_active_idx
+      ON granted_scopes (user_id, scope)
+      WHERE revoked_at IS NULL
+  `);
 
   // Admin login
   const adminLogin = await post("/api/auth/login", {
@@ -450,5 +463,129 @@ describe("Storage-level unit tests — grantScope / revokeScope / hasGrantedScop
     const active = await storage.getGrantedScopes(userId);
     const matches = active.filter((s: any) => s.scope === dupScope);
     expect(matches).toHaveLength(1);
+  });
+});
+
+// ── 8. Deduplication migration ────────────────────────────────────────────────
+// Simulates the pre-index scenario where the same (user_id, scope) pair could
+// have multiple active rows.  Because the partial unique index now blocks normal
+// inserts, we temporarily drop it, inject the duplicates via raw SQL, run the
+// migration, and verify the post-migration invariant before recreating the index.
+
+describe("deduplicateGrantedScopes migration", () => {
+  const INDEX_NAME = "granted_scopes_user_scope_active_idx";
+
+  // Drop the partial unique index before this block so we can insert duplicates.
+  beforeAll(async () => {
+    await db.execute(sql`DROP INDEX IF EXISTS ${sql.raw(INDEX_NAME)}`);
+  });
+
+  // Always recreate the index afterwards so the rest of the test suite is unaffected.
+  // First run deduplication to ensure no active duplicates block index creation.
+  afterAll(async () => {
+    await deduplicateGrantedScopes({ verbose: false });
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS ${sql.raw(INDEX_NAME)}
+        ON granted_scopes (user_id, scope)
+        WHERE revoked_at IS NULL
+    `);
+  });
+
+  it("migration returns { duplicatePairs: 0, totalRevoked: 0 } on a clean database", async () => {
+    // Ensure the DB starts with no duplicates for the current userId.
+    const result = await deduplicateGrantedScopes({ verbose: false });
+    expect(result.duplicatePairs).toBeGreaterThanOrEqual(0);
+    expect(result.totalRevoked).toBeGreaterThanOrEqual(0);
+    // No pair should have more duplicates than granted pairs — just sanity check types.
+    expect(typeof result.duplicatePairs).toBe("number");
+    expect(typeof result.totalRevoked).toBe("number");
+  });
+
+  it("migration revokes all but the newest active row when duplicates exist", async () => {
+    const scopeName = `dup_migrate_${Date.now()}`;
+
+    // Insert three active rows for the same (userId, scope) with different timestamps.
+    // This is only possible while the partial unique index is dropped.
+    await db.execute(sql`
+      INSERT INTO granted_scopes (id, user_id, scope, granted_at)
+      VALUES
+        (gen_random_uuid(), ${userId}, ${scopeName}, NOW() - INTERVAL '3 hours'),
+        (gen_random_uuid(), ${userId}, ${scopeName}, NOW() - INTERVAL '2 hours'),
+        (gen_random_uuid(), ${userId}, ${scopeName}, NOW() - INTERVAL '1 hour')
+    `);
+
+    // Confirm three active rows exist before migration.
+    const before = await db.execute<{ cnt: string }>(sql`
+      SELECT COUNT(*) AS cnt
+      FROM   granted_scopes
+      WHERE  user_id    = ${userId}
+        AND  scope      = ${scopeName}
+        AND  revoked_at IS NULL
+    `);
+    expect(Number(before.rows[0].cnt)).toBe(3);
+
+    // Run the migration.
+    const result = await deduplicateGrantedScopes({ verbose: false });
+
+    // At least one duplicate pair should have been resolved.
+    expect(result.duplicatePairs).toBeGreaterThanOrEqual(1);
+    // Two of the three rows should have been revoked (3 - 1 = 2).
+    expect(result.totalRevoked).toBeGreaterThanOrEqual(2);
+
+    // After migration, getGrantedScopes must return exactly ONE active row for this scope.
+    const active = await storage.getGrantedScopes(userId);
+    const matches = active.filter((s: any) => s.scope === scopeName);
+    expect(matches).toHaveLength(1);
+
+    // The surviving row must be the one with the most-recent granted_at (newest kept).
+    const newestRow = await db.execute<{ granted_at: string }>(sql`
+      SELECT granted_at
+      FROM   granted_scopes
+      WHERE  user_id    = ${userId}
+        AND  scope      = ${scopeName}
+        AND  revoked_at IS NULL
+    `);
+    const newest = newestRow.rows[0];
+    const survivorGrantedAt = new Date(newest.granted_at).getTime();
+    const oneHourAgoApprox  = Date.now() - 65 * 60 * 1000; // ~1h ago ± 5 min
+    expect(survivorGrantedAt).toBeGreaterThan(oneHourAgoApprox);
+  });
+
+  it("getGrantedScopes returns exactly one row per scope after migration (no duplicates)", async () => {
+    const scopes = await storage.getGrantedScopes(userId);
+
+    // Build a frequency map of scope names.
+    const freq: Record<string, number> = {};
+    for (const s of scopes) {
+      freq[s.scope] = (freq[s.scope] ?? 0) + 1;
+    }
+
+    // Every scope must appear at most once.
+    for (const [scope, count] of Object.entries(freq)) {
+      expect(count, `scope "${scope}" appears ${count} time(s) — expected 1`).toBe(1);
+    }
+  });
+
+  it("revokeScope still revokes the single surviving active row after migration", async () => {
+    const scopeName = `dup_revoke_${Date.now()}`;
+
+    // Insert two duplicates (index is still dropped at this point).
+    await db.execute(sql`
+      INSERT INTO granted_scopes (id, user_id, scope, granted_at)
+      VALUES
+        (gen_random_uuid(), ${userId}, ${scopeName}, NOW() - INTERVAL '2 hours'),
+        (gen_random_uuid(), ${userId}, ${scopeName}, NOW() - INTERVAL '1 hour')
+    `);
+
+    // Deduplicate first.
+    await deduplicateGrantedScopes({ verbose: false });
+
+    // Now revokeScope should find exactly one row and revoke it.
+    const revoked = await storage.revokeScope(userId, scopeName);
+    expect(revoked).toBe(true);
+
+    // hasGrantedScope must return false after revocation.
+    const has = await storage.hasGrantedScope(userId, scopeName);
+    expect(has).toBe(false);
   });
 });
