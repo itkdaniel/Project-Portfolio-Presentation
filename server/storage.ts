@@ -608,7 +608,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async grantScope(data: InsertGrantedScope): Promise<GrantedScope> {
-    const [g] = await db.insert(grantedScopes).values(data).returning();
+    const [g] = await db
+      .insert(grantedScopes)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [grantedScopes.userId, grantedScopes.scope],
+        targetWhere: sql`revoked_at IS NULL`,
+        set: {
+          grantedBy: data.grantedBy ?? null,
+          grantedAt: new Date(),
+          expiresAt: data.expiresAt ?? null,
+        },
+      })
+      .returning();
     return g;
   }
 

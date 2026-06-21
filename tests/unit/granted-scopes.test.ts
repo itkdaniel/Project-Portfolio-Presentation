@@ -432,4 +432,23 @@ describe("Storage-level unit tests — grantScope / revokeScope / hasGrantedScop
     expect(scopeNames).not.toContain(revokedScope);
     expect(scopeNames).not.toContain(expiredScope);
   });
+
+  it("grantScope — double-approving the same scope produces exactly one active grant row", async () => {
+    const dupScope = `storage_dup_${Date.now()}`;
+
+    const first  = await storage.grantScope({ userId, scope: dupScope, grantedBy: null });
+    const second = await storage.grantScope({ userId, scope: dupScope, grantedBy: null });
+
+    // Both calls return a valid grant record
+    expect(first.id).toBeTruthy();
+    expect(second.id).toBeTruthy();
+
+    // The UPSERT must keep the same row (same primary-key id)
+    expect(second.id).toBe(first.id);
+
+    // Only one active row should exist in the DB for this scope
+    const active = await storage.getGrantedScopes(userId);
+    const matches = active.filter((s: any) => s.scope === dupScope);
+    expect(matches).toHaveLength(1);
+  });
 });

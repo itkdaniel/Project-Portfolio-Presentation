@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, pgEnum, integer, serial, jsonb, numeric, doublePrecision } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, pgEnum, integer, serial, jsonb, numeric, doublePrecision, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -569,7 +569,11 @@ export const grantedScopes = pgTable("granted_scopes", {
   grantedAt:   timestamp("granted_at").notNull().defaultNow(),
   expiresAt:   timestamp("expires_at"),                                       // null = no expiry
   revokedAt:   timestamp("revoked_at"),                                       // null = still active
-});
+}, (t) => ({
+  activeGrantUniq: uniqueIndex("granted_scopes_user_scope_active_idx")
+    .on(t.userId, t.scope)
+    .where(sql`revoked_at IS NULL`),
+}));
 
 export const insertGrantedScopeSchema = createInsertSchema(grantedScopes).omit({ id: true, grantedAt: true });
 export type InsertGrantedScope = z.infer<typeof insertGrantedScopeSchema>;
