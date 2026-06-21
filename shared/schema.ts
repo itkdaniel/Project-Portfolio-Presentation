@@ -466,8 +466,9 @@ export const scopeRequests = pgTable("scope_requests", {
 
 export const insertScopeRequestSchema = createInsertSchema(scopeRequests).omit({ id: true, status: true, adminNote: true, reviewedBy: true, reviewedAt: true, createdAt: true });
 export const updateScopeRequestSchema = z.object({
-  status:    z.enum(["approved", "denied"]),
-  adminNote: z.string().max(500).optional(),
+  status:        z.enum(["approved", "denied"]),
+  adminNote:     z.string().max(500).optional(),
+  expiresInDays: z.number().int().positive().optional(),
 });
 export type InsertScopeRequest = z.infer<typeof insertScopeRequestSchema>;
 export type UpdateScopeRequest = z.infer<typeof updateScopeRequestSchema>;

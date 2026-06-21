@@ -8,7 +8,8 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { ClipboardCheck, CheckCircle, XCircle, Clock, RefreshCw, ChevronDown, ChevronUp, Shield } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ClipboardCheck, CheckCircle, XCircle, Clock, RefreshCw, ChevronDown, ChevronUp, Shield, CalendarClock } from "lucide-react";
 import { Link } from "wouter";
 import { formatDistanceToNow } from "date-fns";
 
@@ -59,13 +60,22 @@ function ReviewPanel({ req, onClose }: { req: ScopeRequestWithUser; onClose: () 
   const { toast } = useToast();
   const qc = useQueryClient();
   const [note, setNote] = useState(req.adminNote ?? "");
+  const [expiresInDays, setExpiresInDays] = useState("");
 
   const decide = useMutation({
-    mutationFn: ({ status }: { status: "approved" | "denied" }) =>
-      apiFetch(`/api/scope-requests/${req.id}`, {
+    mutationFn: ({ status }: { status: "approved" | "denied" }) => {
+      const days = status === "approved" && expiresInDays.trim() !== ""
+        ? parseInt(expiresInDays, 10)
+        : undefined;
+      return apiFetch(`/api/scope-requests/${req.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ status, adminNote: note || undefined }),
-      }),
+        body: JSON.stringify({
+          status,
+          adminNote: note || undefined,
+          ...(days && days > 0 ? { expiresInDays: days } : {}),
+        }),
+      });
+    },
     onSuccess: (_, { status }) => {
       qc.invalidateQueries({ queryKey: ["/api/scope-requests"] });
       toast({ title: `Request ${status}`, description: `Scope "${req.scopeName}" has been ${status}.` });
@@ -85,6 +95,20 @@ function ReviewPanel({ req, onClose }: { req: ScopeRequestWithUser; onClose: () 
           className="resize-none text-sm h-20 bg-background/50"
           maxLength={500}
           data-testid="input-admin-note"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <CalendarClock className="w-3 h-3" /> Expires in (days) — leave blank for no expiry
+        </Label>
+        <Input
+          type="number"
+          min={1}
+          value={expiresInDays}
+          onChange={e => setExpiresInDays(e.target.value)}
+          placeholder="e.g. 30"
+          className="h-8 text-sm w-36 bg-background/50"
+          data-testid="input-expires-in-days"
         />
       </div>
       <div className="flex items-center gap-2">

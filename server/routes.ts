@@ -1379,7 +1379,15 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
       if (!updated) return res.status(404).json({ message: "Scope request not found" });
 
       if (data.status === "approved") {
-        await storage.grantScope({ userId: updated.userId, scope: updated.scopeName, grantedBy: req.user!.id });
+        const expiresAt = data.expiresInDays
+          ? new Date(Date.now() + data.expiresInDays * 24 * 60 * 60 * 1000)
+          : null;
+        await storage.grantScope({
+          userId:    updated.userId,
+          scope:     updated.scopeName,
+          grantedBy: req.user!.id,
+          ...(expiresAt ? { expiresAt } : {}),
+        });
       }
 
       // Notify the user of the decision
