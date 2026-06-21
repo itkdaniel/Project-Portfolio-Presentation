@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { Bell, CheckCheck, Trash2, Info, CheckCircle, AlertTriangle, XCircle, RefreshCw, Filter } from "lucide-react";
+import { Bell, CheckCheck, Trash2, Info, CheckCircle, AlertTriangle, XCircle, RefreshCw } from "lucide-react";
 import { Link } from "wouter";
 import { formatDistanceToNow } from "date-fns";
 
@@ -60,18 +60,29 @@ function typeLabel(type: string) {
   }
 }
 
-type FilterTab = "all" | "unread" | "read";
+type StatusFilter = "all" | "unread" | "read";
+type TypeFilter   = "all" | "info" | "success" | "warning" | "error" | "scope";
+
+const TYPE_TABS: { key: TypeFilter; label: string }[] = [
+  { key: "all",     label: "All types"  },
+  { key: "info",    label: "Info"       },
+  { key: "success", label: "Success"    },
+  { key: "warning", label: "Warning"    },
+  { key: "error",   label: "Error"      },
+  { key: "scope",   label: "Scope"      },
+];
 
 export default function NotificationsPage() {
   const token = getToken();
   const isAuthenticated = !!token;
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [filter, setFilter] = useState<FilterTab>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [typeFilter,   setTypeFilter]   = useState<TypeFilter>("all");
 
   const { data: resp, isLoading } = useQuery<{ unreadCount: number; notifications: AppNotification[] }>({
-    queryKey: ["/api/notifications"],
-    queryFn:  () => apiFetch("/api/notifications"),
+    queryKey: ["/api/notifications/all"],
+    queryFn:  () => apiFetch("/api/notifications/all"),
     enabled:  isAuthenticated,
     refetchInterval: 15_000,
   });
@@ -79,12 +90,16 @@ export default function NotificationsPage() {
 
   const markRead = useMutation({
     mutationFn: (id: string) => apiFetch(`/api/notifications/${id}/read`, { method: "PATCH" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/notifications"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/notifications/all"] });
+      qc.invalidateQueries({ queryKey: ["/api/notifications"] });
+    },
   });
 
   const markAllRead = useMutation({
     mutationFn: () => apiFetch("/api/notifications/read-all", { method: "PATCH" }),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/notifications/all"] });
       qc.invalidateQueries({ queryKey: ["/api/notifications"] });
       toast({ title: "All notifications marked as read" });
     },
@@ -92,24 +107,34 @@ export default function NotificationsPage() {
 
   const deleteNotif = useMutation({
     mutationFn: (id: string) => apiFetch(`/api/notifications/${id}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/notifications"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/notifications/all"] });
+      qc.invalidateQueries({ queryKey: ["/api/notifications"] });
+    },
   });
 
   const clearRead = useMutation({
     mutationFn: () => apiFetch("/api/notifications/clear-read", { method: "DELETE" }),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/notifications/all"] });
       qc.invalidateQueries({ queryKey: ["/api/notifications"] });
       toast({ title: "Read notifications cleared" });
     },
   });
 
   const filtered = notifs.filter(n => {
-    if (filter === "unread") return !n.read;
-    if (filter === "read")   return n.read;
-    return true;
+    const passStatus =
+      statusFilter === "unread" ? !n.read :
+      statusFilter === "read"   ?  n.read :
+      true;
+    const passType =
+      typeFilter === "all"   ? true :
+      typeFilter === "scope" ? (n.type === "scope_request" || n.type === "scope_update") :
+      n.type === typeFilter;
+    return passStatus && passType;
   });
 
-  const unreadCount = notifs.filter(n => !n.read).length;
+  const unreadCount = resp?.unreadCount ?? notifs.filter(n => !n.read).length;
 
   if (!isAuthenticated) {
     return (
@@ -157,21 +182,39 @@ export default function NotificationsPage() {
           </div>
         </div>
 
-        {/* Filter tabs */}
-        <div className="flex items-center gap-1 mb-6 bg-white/5 rounded-lg p-1 w-fit" data-testid="notifications-filter">
-          {(["all", "unread", "read"] as FilterTab[]).map(t => (
+        {/* Status filter tabs */}
+        <div className="flex items-center gap-1 mb-3 bg-white/5 rounded-lg p-1 w-fit" data-testid="notifications-filter">
+          {(["all", "unread", "read"] as StatusFilter[]).map(t => (
             <button
               key={t}
-              data-testid={`filter-${t}`}
-              onClick={() => setFilter(t)}
+              data-testid={`filter-status-${t}`}
+              onClick={() => setStatusFilter(t)}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all capitalize ${
-                filter === t ? "bg-primary/10 text-primary border border-primary/20" : "text-muted-foreground hover:text-foreground"
+                statusFilter === t ? "bg-primary/10 text-primary border border-primary/20" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {t}
               {t === "unread" && unreadCount > 0 && (
                 <span className="ml-1.5 bg-primary text-white text-xs rounded-full px-1.5 py-0.5">{unreadCount}</span>
               )}
+            </button>
+          ))}
+        </div>
+
+        {/* Type filter tabs */}
+        <div className="flex items-center gap-1 mb-6 flex-wrap" data-testid="notifications-type-filter">
+          {TYPE_TABS.map(({ key, label }) => (
+            <button
+              key={key}
+              data-testid={`filter-type-${key}`}
+              onClick={() => setTypeFilter(key)}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                typeFilter === key
+                  ? "bg-white/10 text-foreground border border-white/20"
+                  : "text-muted-foreground/70 hover:text-muted-foreground"
+              }`}
+            >
+              {label}
             </button>
           ))}
         </div>
@@ -185,7 +228,7 @@ export default function NotificationsPage() {
           ) : filtered.length === 0 ? (
             <div className="text-center py-16 text-muted-foreground" data-testid="notifications-empty">
               <Bell className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p className="font-medium">No {filter !== "all" ? filter : ""} notifications</p>
+              <p className="font-medium">No {statusFilter !== "all" ? statusFilter : ""} notifications{typeFilter !== "all" ? ` of type "${typeFilter}"` : ""}</p>
               <p className="text-sm mt-1">You're all caught up.</p>
             </div>
           ) : (

@@ -1189,11 +1189,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // NOTIFICATIONS
   // ══════════════════════════════════════════════════════════════════════════
 
-  // GET /api/notifications — { unreadCount, notifications } — full list, newest first
+  // GET /api/notifications — { unreadCount, notifications } — 20 most recent (for bell/navbar)
   app.get("/api/notifications", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
-    const notifications = await storage.getNotifications(req.user!.id);
-    const unreadCount   = notifications.filter(n => !n.read).length;
+    const all         = await storage.getNotifications(req.user!.id);
+    const unreadCount = all.filter(n => !n.read).length;
+    const notifications = all.slice(0, 20);
     return res.json({ unreadCount, notifications });
+  });
+
+  // GET /api/notifications/all — full list (for /notifications page, supports type filter)
+  app.get("/api/notifications/all", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    const all         = await storage.getNotifications(req.user!.id);
+    const unreadCount = all.filter(n => !n.read).length;
+    return res.json({ unreadCount, notifications: all });
   });
 
   // PATCH /api/notifications/read-all — mark all as read
@@ -1308,7 +1316,7 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
         type:  "info",
         title: "Scope Request Submitted",
         body:  `Your request for "${data.scopeName}" has been submitted and is pending review.`,
-        link:  "/notifications",
+        link:  "/settings",
       });
 
       return res.status(201).json(created);
@@ -1350,7 +1358,7 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
         type:         action === "approved" ? "success" : "warning",
         title:        `Scope Request ${action === "approved" ? "Approved" : "Denied"}`,
         body:         `Your request for "${updated.scopeName}" was ${action} via quick-action email link.`,
-        link:         "/notifications",
+        link:         "/settings",
         emailSubject: `[NexusConsult] Scope Request ${action === "approved" ? "Approved" : "Denied"}`,
       });
     }
@@ -1369,7 +1377,7 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
         type:         data.status === "approved" ? "success" : "warning",
         title:        `Scope Request ${data.status === "approved" ? "Approved" : "Denied"}`,
         body:         `Your request for "${updated.scopeName}" was ${data.status}.${data.adminNote ? ` Note: ${data.adminNote}` : ""}`,
-        link:         "/notifications",
+        link:         "/settings",
         emailSubject: `[NexusConsult] Scope Request ${data.status === "approved" ? "Approved" : "Denied"}`,
       });
 
