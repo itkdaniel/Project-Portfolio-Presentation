@@ -24,6 +24,8 @@ import {
   type EntityRelation, type InsertEntityRelation,
   type ScrapeJob, type InsertScrapeJob,
   type ScrapeSource, type InsertScrapeSource,
+  grantedScopes,
+  type GrantedScope, type InsertGrantedScope,
 } from "@shared/schema";
 import { encryptField, decryptField } from "./crypto";
 
@@ -107,6 +109,12 @@ export interface IStorage {
   updateScrapeJob(id: string, data: Partial<InsertScrapeJob>): Promise<ScrapeJob | undefined>;
   getScrapeSources(): Promise<ScrapeSource[]>;
   createScrapeSource(data: InsertScrapeSource): Promise<ScrapeSource>;
+
+  // Granted scopes (AI access control)
+  getGrantedScopes(userId: string): Promise<GrantedScope[]>;
+  hasGrantedScope(userId: string, scope: string): Promise<boolean>;
+  grantScope(data: InsertGrantedScope): Promise<GrantedScope>;
+  revokeScope(userId: string, scope: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -563,6 +571,45 @@ export class DatabaseStorage implements IStorage {
   async createScrapeSource(data: InsertScrapeSource): Promise<ScrapeSource> {
     const [s] = await db.insert(scrapeSources).values(data).returning();
     return s;
+  }
+
+  // ── Granted Scopes ─────────────────────────────────────────────────────────
+
+  async getGrantedScopes(userId: string): Promise<GrantedScope[]> {
+    return db
+      .select()
+      .from(grantedScopes)
+      .where(and(eq(grantedScopes.userId, userId), sql`revoked_at IS NULL`));
+  }
+
+  async hasGrantedScope(userId: string, scope: string): Promise<boolean> {
+    const [row] = await db
+      .select()
+      .from(grantedScopes)
+      .where(
+        and(
+          eq(grantedScopes.userId, userId),
+          eq(grantedScopes.scope, scope),
+          sql`revoked_at IS NULL`,
+          sql`(expires_at IS NULL OR expires_at > NOW())`,
+        ),
+      )
+      .limit(1);
+    return !!row;
+  }
+
+  async grantScope(data: InsertGrantedScope): Promise<GrantedScope> {
+    const [g] = await db.insert(grantedScopes).values(data).returning();
+    return g;
+  }
+
+  async revokeScope(userId: string, scope: string): Promise<boolean> {
+    const r = await db
+      .update(grantedScopes)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(grantedScopes.userId, userId), eq(grantedScopes.scope, scope), sql`revoked_at IS NULL`))
+      .returning();
+    return r.length > 0;
   }
 }
 

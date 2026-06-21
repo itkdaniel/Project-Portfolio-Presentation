@@ -15,7 +15,8 @@ import {
   User, Bell, Palette, Shield, Mail, Plug,
   Github, Linkedin, Globe, Save, RefreshCw,
   CheckCircle, AlertCircle, Eye, EyeOff,
-  ChevronRight, Settings as SettingsIcon, X, Upload, Trash2
+  ChevronRight, Settings as SettingsIcon, X, Upload, Trash2,
+  Brain, Lock, CheckCircle2, Clock, XCircle, ShieldAlert
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -1135,6 +1136,144 @@ function EmailConfigSection({ cfg, onSave, saving }: { cfg?: EmailConfigData; on
   );
 }
 
+// ── AI Access Card ────────────────────────────────────────────────────────────
+
+interface GrantedScopeRow {
+  id: string;
+  scope: string;
+  grantedAt: string;
+  expiresAt: string | null;
+}
+
+interface ScopeRequestRow {
+  id: string;
+  scopeName: string;
+  status: "pending" | "approved" | "denied";
+  createdAt: string;
+  adminNote?: string | null;
+}
+
+function AIAccessCard() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const token = typeof localStorage !== "undefined" ? localStorage.getItem("nexus_token") : null;
+
+  const { data: grantedScopes = [], isLoading: scopesLoading } = useQuery<GrantedScopeRow[]>({
+    queryKey: ["/api/granted-scopes"],
+    queryFn:  () => apiGet("/api/granted-scopes"),
+    enabled:  !!token,
+    retry: false,
+  });
+
+  const { data: myRequests = [], isLoading: reqLoading } = useQuery<ScopeRequestRow[]>({
+    queryKey: ["/api/scope-requests/mine"],
+    queryFn:  () => apiGet("/api/scope-requests"),
+    enabled:  !!token,
+    retry: false,
+    refetchInterval: 15_000,
+  });
+
+  const uncensoredGranted = grantedScopes.some(s => s.scope === "uncensored");
+  const uncensoredRequest = myRequests
+    .filter(r => r.scopeName === "uncensored")
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+  const requestMutation = useMutation({
+    mutationFn: () => apiPost("/api/scope-requests", {
+      scopeName: "uncensored",
+      reason: "Requesting uncensored AI mode for advanced use cases.",
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/scope-requests/mine"] });
+      toast({ title: "Request submitted", description: "An admin will review your request." });
+    },
+    onError: (e: Error) => toast({ title: "Failed to submit", description: e.message, variant: "destructive" }),
+  });
+
+  const canRequest = !uncensoredGranted && (!uncensoredRequest || uncensoredRequest.status === "denied");
+
+  return (
+    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-5 space-y-4" data-testid="card-ai-access">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+            <Brain className="w-4 h-4 text-amber-400" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold">AI Access</h3>
+            <p className="text-xs text-muted-foreground">Uncensored mode &amp; advanced AI features</p>
+          </div>
+        </div>
+        {uncensoredGranted && (
+          <Badge className="bg-green-500/15 text-green-400 border-green-500/20 text-xs" data-testid="badge-scope-uncensored-granted">
+            <CheckCircle2 className="w-3 h-3 mr-1" /> Granted
+          </Badge>
+        )}
+      </div>
+
+      <p className="text-xs text-muted-foreground leading-relaxed">
+        Uncensored mode bypasses content-filter post-processing on AI endpoints.
+        It requires admin approval and is logged for compliance. Standard model weights are unchanged.
+      </p>
+
+      {/* Active scopes list */}
+      {!scopesLoading && grantedScopes.length > 0 && (
+        <div className="space-y-1.5" data-testid="list-granted-scopes">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Active Scopes</p>
+          {grantedScopes.map(s => (
+            <div key={s.id} className="flex items-center gap-2 text-xs">
+              <Lock className="w-3 h-3 text-green-400" />
+              <code className="font-mono text-green-400">{s.scope}</code>
+              <span className="text-muted-foreground">
+                granted {new Date(s.grantedAt).toLocaleDateString()}
+                {s.expiresAt ? ` · expires ${new Date(s.expiresAt).toLocaleDateString()}` : " · no expiry"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Pending request status */}
+      {uncensoredRequest && !uncensoredGranted && (
+        <div className={`flex items-start gap-2 text-xs rounded-lg px-3 py-2.5 border ${
+          uncensoredRequest.status === "pending"
+            ? "bg-amber-500/5 border-amber-500/20 text-amber-400"
+            : uncensoredRequest.status === "approved"
+              ? "bg-green-500/5 border-green-500/20 text-green-400"
+              : "bg-red-500/5 border-red-500/20 text-red-400"
+        }`} data-testid="badge-uncensored-request-status">
+          {uncensoredRequest.status === "pending" && <Clock className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+          {uncensoredRequest.status === "approved" && <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+          {uncensoredRequest.status === "denied"   && <XCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+          <div>
+            <span className="font-medium capitalize">{uncensoredRequest.status}</span>
+            {uncensoredRequest.status === "pending" && " — awaiting admin review"}
+            {uncensoredRequest.status === "denied"  && uncensoredRequest.adminNote && (
+              <span className="text-muted-foreground"> — {uncensoredRequest.adminNote}</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Request / re-request button */}
+      {canRequest && (
+        <button
+          type="button"
+          data-testid="btn-request-uncensored"
+          onClick={() => requestMutation.mutate()}
+          disabled={requestMutation.isPending}
+          className="flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {requestMutation.isPending
+            ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            : <ShieldAlert className="w-3.5 h-3.5" />}
+          {uncensoredRequest?.status === "denied" ? "Re-request uncensored access" : "Request uncensored access"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── Integrations Section ──────────────────────────────────────────────────────
 
 function IntegrationsSection({ settings, onSave, saving }: { settings: UserSettingsData; onSave: (d: any) => void; saving: boolean }) {
@@ -1145,7 +1284,7 @@ function IntegrationsSection({ settings, onSave, saving }: { settings: UserSetti
   });
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <p className="text-sm text-muted-foreground">
         Configure your social and external profile links. These appear in the footer, email signatures, and your public profile.
       </p>
@@ -1190,6 +1329,10 @@ function IntegrationsSection({ settings, onSave, saving }: { settings: UserSetti
             placeholder="https://yourwebsite.com" className="bg-background/50" />
         </div>
       </div>
+
+      <Separator className="opacity-10" />
+
+      <AIAccessCard />
 
       <SaveButton onClick={() => onSave(form)} saving={saving} />
     </div>

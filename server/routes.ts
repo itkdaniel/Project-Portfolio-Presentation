@@ -11,6 +11,7 @@ import {
   updateUserSettingsSchema, updateEmailConfigSchema, updateProfileSchema, updateResumeSchema, registerSchema,
   insertScopeRequestSchema, updateScopeRequestSchema, updateNotifPrefsSchema,
 } from "@shared/schema";
+import { grantedScopes } from "@shared/schema";
 import { ZodError } from "zod";
 import { requireAuth, requireAdmin, generateToken, hashPassword, seedAdminUser, CORP_ROLE_SEED, DATA_RATING_SEED, type AuthenticatedRequest } from "./auth";
 import { seedTaxData } from "./tax-seed";
@@ -1356,6 +1357,9 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
       { status: action, adminNote: "Reviewed via one-click email link." },
     );
     if (updated) {
+      if (action === "approved") {
+        await storage.grantScope({ userId: updated.userId, scope: updated.scopeName, grantedBy: null });
+      }
       await sendNotification(updated.userId, {
         type:         action === "approved" ? "success" : "warning",
         title:        `Scope Request ${action === "approved" ? "Approved" : "Denied"}`,
@@ -1374,6 +1378,10 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
       const updated = await storage.reviewScopeRequest(req.params.id as string, req.user!.id, data);
       if (!updated) return res.status(404).json({ message: "Scope request not found" });
 
+      if (data.status === "approved") {
+        await storage.grantScope({ userId: updated.userId, scope: updated.scopeName, grantedBy: req.user!.id });
+      }
+
       // Notify the user of the decision
       await sendNotification(updated.userId, {
         type:         data.status === "approved" ? "success" : "warning",
@@ -1388,6 +1396,22 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
       const { status, body } = zodErr(e);
       return res.status(status).json(body);
     }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // GRANTED SCOPES — AI Access Control
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // GET /api/granted-scopes — list active granted scopes for the current user
+  app.get("/api/granted-scopes", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    const scopes = await storage.getGrantedScopes(req.user!.id);
+    return res.json(scopes);
+  });
+
+  // DELETE /api/granted-scopes/:scope — revoke a scope (admin or self)
+  app.delete("/api/granted-scopes/:scope", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    const revoked = await storage.revokeScope(req.user!.id, req.params.scope as string);
+    return res.json({ revoked });
   });
 
   // ══════════════════════════════════════════════════════════════════════════

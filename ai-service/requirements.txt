@@ -8,3 +8,4 @@ redis[hiredis]==5.0.4
 httpx==0.27.0
 structlog==24.2.0
 tqdm==4.66.4
+stem==1.8.2

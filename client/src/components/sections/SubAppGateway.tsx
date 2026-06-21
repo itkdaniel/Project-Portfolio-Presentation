@@ -29,6 +29,7 @@ import {
   ChevronDown,
   ChevronUp,
   Link as LinkIcon,
+  Shield,
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -90,6 +91,76 @@ const METHOD_COLORS: Record<string, string> = {
   PATCH:  "text-violet-400 bg-violet-400/10 border-violet-400/20",
   DELETE: "text-red-400 bg-red-400/10 border-red-400/20",
 };
+
+// ── TorStatusPill ─────────────────────────────────────────────────────────────
+
+interface TorStatus {
+  running: boolean;
+  circuitEstablished: boolean;
+  bootstrapPercent: number;
+  socksProxy: string | null;
+  error: string | null;
+}
+
+function TorStatusPill() {
+  const { data, isLoading, isError } = useQuery<TorStatus>({
+    queryKey: ["/api/apps/ai/proxy/ai/tor/status"],
+    queryFn: async () => {
+      const res = await fetch("/api/apps/ai/proxy/ai/tor/status");
+      if (!res.ok) throw new Error(`${res.status}`);
+      return res.json();
+    },
+    refetchInterval: 30_000,
+    retry: false,
+    staleTime: 20_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-mono" data-testid="tor-pill-loading">
+        <Loader2 className="w-3 h-3 animate-spin" />
+        <span>Tor…</span>
+      </div>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-red-400/70 font-mono" data-testid="tor-pill-error">
+        <Shield className="w-3 h-3" />
+        <span>Tor offline</span>
+      </div>
+    );
+  }
+
+  if (!data.running) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-mono" data-testid="tor-pill-not-running">
+        <Shield className="w-3 h-3" />
+        <span>Tor not running</span>
+      </div>
+    );
+  }
+
+  if (data.circuitEstablished) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs font-mono" data-testid="tor-pill-connected">
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+        </span>
+        <span className="text-green-400">Tor circuit up</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-amber-400 font-mono" data-testid="tor-pill-bootstrapping">
+      <Shield className="w-3 h-3" />
+      <span>Tor {data.bootstrapPercent}%</span>
+    </div>
+  );
+}
 
 // ── StatusBadge ───────────────────────────────────────────────────────────────
 
@@ -390,8 +461,9 @@ function SubAppDrawer({
             </DrawerClose>
           </div>
 
-          <div className="flex items-center gap-4 mt-3">
+          <div className="flex items-center gap-4 mt-3 flex-wrap">
             {healthData && <StatusBadge status={healthData.status} latencyMs={healthData.latencyMs} />}
+            {app.name === "ai" && <TorStatusPill />}
             <div className="flex flex-wrap gap-1.5">
               {app.tags.map(tag => (
                 <Badge key={tag} variant="outline" className="text-xs border-white/10 bg-white/5">{tag}</Badge>

@@ -28,6 +28,7 @@ dependencies = [
     "python-multipart>=0.0.32",
     "redis>=8.0.0",
     "sqlalchemy[asyncio]>=2.0.51",
+    "stem==1.8.2",
     "structlog>=26.1.0",
     "torch>=2.12.1",
     "uvicorn[standard]>=0.49.0",

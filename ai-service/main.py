@@ -27,12 +27,13 @@ import numpy as np
 import redis.asyncio as aioredis
 import structlog
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from model.transformer import NexusTransformer, TransformerConfig, build_model
 from model.tokenizer import BPETokenizer, SPECIAL_TOKENS
+from tor_manager import tor_manager
 
 logger = structlog.get_logger(__name__)
 
@@ -106,8 +107,12 @@ async def lifespan(app: FastAPI):
     n_params = _model.count_parameters()
     logger.info("Model ready", params=f"{n_params:,}", device=DEVICE)
 
+    # Start Tor daemon (non-blocking; fails gracefully if tor binary absent)
+    await tor_manager.start()
+
     yield
 
+    tor_manager.stop()
     if _redis:
         await _redis.aclose()
     logger.info("AI service shut down")
@@ -306,3 +311,197 @@ async def fill_mask(req: FillMaskRequest):
         for tid, prob in zip(top_ids, top_probs)
     ]
     return {"text": req.text, "predictions": predictions}
+
+
+# ── Scope check dependency ─────────────────────────────────────────────────────
+
+MAIN_APP_URL = os.getenv("MAIN_APP_URL", "http://localhost:5000")
+
+async def require_scope(scope_name: str):
+    """
+    FastAPI dependency factory.  Verifies the caller holds `scope_name` as a
+    granted scope in the main app DB by forwarding the JWT to /api/granted-scopes.
+
+    Returns the decoded Bearer token on success; raises HTTPException(403) on failure.
+    """
+    async def _check(request: Request) -> str:
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "scope_required",
+                    "scope": scope_name,
+                    "message": "Authentication required to access this endpoint.",
+                    "requestUrl": "/settings",
+                },
+            )
+        token = auth_header[7:]
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(
+                    f"{MAIN_APP_URL}/api/granted-scopes",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+            if resp.status_code != 200:
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": "scope_required",
+                        "scope": scope_name,
+                        "message": f"Could not verify scopes: {resp.status_code}",
+                        "requestUrl": "/settings",
+                    },
+                )
+            scopes = resp.json()
+            granted = [s["scope"] for s in scopes if s.get("scope")]
+            if scope_name not in granted:
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": "scope_required",
+                        "scope": scope_name,
+                        "message": f"You need the '{scope_name}' scope to use this endpoint. Request access in Settings → Integrations.",
+                        "requestUrl": "/settings",
+                    },
+                )
+            return token
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("Scope check failed", error=str(exc))
+            raise HTTPException(
+                status_code=503,
+                detail={"error": "scope_check_unavailable", "message": str(exc)},
+            )
+    return _check
+
+
+_require_uncensored = None  # lazily built
+
+async def _get_uncensored_dep():
+    global _require_uncensored
+    if _require_uncensored is None:
+        _require_uncensored = await require_scope("uncensored")
+    return _require_uncensored
+
+
+# ── Tor endpoints ──────────────────────────────────────────────────────────────
+
+class TorStatusResponse(BaseModel):
+    running: bool
+    circuitEstablished: bool
+    bootstrapPercent: int
+    socksProxy: Optional[str]
+    error: Optional[str]
+
+
+@app.get("/ai/tor/status", response_model=TorStatusResponse, tags=["tor"])
+async def tor_status():
+    """Return current Tor daemon status: running, circuit established, bootstrap %."""
+    return tor_manager.get_status()
+
+
+@app.post("/ai/tor/new-circuit", tags=["tor"])
+async def tor_new_circuit():
+    """Request a new Tor identity (NEWNYM signal). Resets exit node and circuit."""
+    ok = await tor_manager.new_circuit()
+    return {"success": ok, "message": "New circuit requested" if ok else "NEWNYM failed — check Tor status"}
+
+
+# ── Onion scraping relay ───────────────────────────────────────────────────────
+
+NEXUS_SCRAPER_URL = os.getenv("NEXUS_SCRAPER_URL", "").rstrip("/")
+
+class OnionScrapeRequest(BaseModel):
+    url: str = Field(..., description="Onion URL or clearnet URL to fetch via Tor")
+    depth: int = Field(1, ge=1, le=3)
+
+
+@app.post("/scrape/onion", tags=["scraping"])
+async def scrape_onion(req: OnionScrapeRequest):
+    """
+    Relay an onion-scrape request to NexusScraper using Tor SOCKS5 proxy.
+    Only the AI service has Tor configured — NexusScraper proxies through here.
+    """
+    tor_status_data = tor_manager.get_status()
+    if not tor_status_data["running"]:
+        raise HTTPException(status_code=503, detail="Tor is not running. Cannot scrape onion URLs.")
+
+    # If NEXUS_SCRAPER_URL is configured, relay to it; otherwise fetch directly
+    if NEXUS_SCRAPER_URL:
+        import httpx
+        proxies = {"all://": f"socks5://127.0.0.1:{os.getenv('TOR_SOCKS_PORT', '9050')}"}
+        try:
+            async with httpx.AsyncClient(proxies=proxies, timeout=60.0) as client:
+                resp = await client.post(
+                    f"{NEXUS_SCRAPER_URL}/v1/scrape/onion",
+                    json={"url": req.url, "depth": req.depth},
+                )
+            return resp.json()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Onion scrape relay failed: {e}")
+
+    return {"status": "relayed", "url": req.url, "note": "NEXUS_SCRAPER_URL not configured — direct fetch not implemented"}
+
+
+# ── Uncensored mode endpoints ──────────────────────────────────────────────────
+
+@app.post("/ai/classify/uncensored", response_model=ClassifyResponse, tags=["uncensored"])
+async def classify_uncensored(req: ClassifyRequest, request: Request):
+    """
+    Uncensored classification — identical to /ai/classify but bypasses any
+    content-filter post-processing.  Requires the 'uncensored' granted scope.
+    """
+    dep = await require_scope("uncensored")
+    await dep(request)
+
+    enc = _encode([req.text])
+    with torch.no_grad():
+        outputs = _model(**enc)
+        probs   = F.softmax(outputs["logits"][0], dim=-1).cpu().tolist()
+
+    indexed = sorted(enumerate(probs), key=lambda x: x[1], reverse=True)
+    preds   = [{"label": INTENT_LABELS[i], "score": round(s, 4)} for i, s in indexed[: req.top_k]]
+
+    return ClassifyResponse(text=req.text, predictions=preds, device=DEVICE)
+
+
+@app.post("/ai/fill-mask/uncensored", tags=["uncensored"])
+async def fill_mask_uncensored(req: FillMaskRequest, request: Request):
+    """
+    Uncensored fill-mask — identical to /ai/fill-mask but bypasses keyword blocklist.
+    Requires the 'uncensored' granted scope.
+    """
+    dep = await require_scope("uncensored")
+    await dep(request)
+
+    mask_token = "[MASK]"
+    if mask_token not in req.text:
+        raise HTTPException(status_code=400, detail="Text must contain [MASK] token")
+
+    enc       = _encode([req.text])
+    input_ids = enc["input_ids"][0].tolist()
+
+    mask_id = SPECIAL_TOKENS["[MASK]"]
+    try:
+        mask_pos = input_ids.index(mask_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="[MASK] not found after tokenization")
+
+    with torch.no_grad():
+        hidden      = _model.encoder(**enc)
+        mask_hidden = hidden[0, mask_pos, :]
+        vocab_emb   = _model.encoder.token_emb.weight
+        logits      = torch.matmul(mask_hidden, vocab_emb.T)
+        probs       = F.softmax(logits, dim=-1)
+        top_probs, top_ids = probs.topk(req.top_k)
+
+    predictions = [
+        {"token": _tokenizer.decode([tid.item()], skip_special_tokens=False),
+         "token_id": tid.item(),
+         "score": round(prob.item(), 4)}
+        for tid, prob in zip(top_ids, top_probs)
+    ]
+    return {"text": req.text, "predictions": predictions, "uncensored": True}

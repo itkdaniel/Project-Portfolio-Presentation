@@ -556,3 +556,20 @@ export const scrapeSources = pgTable("scrape_sources", {
 export const insertScrapeSourceSchema = createInsertSchema(scrapeSources).omit({ id: true });
 export type InsertScrapeSource = z.infer<typeof insertScrapeSourceSchema>;
 export type ScrapeSource = typeof scrapeSources.$inferSelect;
+
+// ── Granted Scopes ──────────────────────────────────────────────────────────
+// Persists approved scope grants — written when an admin approves a scope request.
+// The AI service middleware reads this table (via the main app API) to gate access.
+export const grantedScopes = pgTable("granted_scopes", {
+  id:          varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId:      varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  scope:       text("scope").notNull(),                                      // e.g. "uncensored"
+  grantedBy:   varchar("granted_by").references(() => users.id),             // admin who granted it (null = email link)
+  grantedAt:   timestamp("granted_at").notNull().defaultNow(),
+  expiresAt:   timestamp("expires_at"),                                       // null = no expiry
+  revokedAt:   timestamp("revoked_at"),                                       // null = still active
+});
+
+export const insertGrantedScopeSchema = createInsertSchema(grantedScopes).omit({ id: true, grantedAt: true });
+export type InsertGrantedScope = z.infer<typeof insertGrantedScopeSchema>;
+export type GrantedScope = typeof grantedScopes.$inferSelect;
