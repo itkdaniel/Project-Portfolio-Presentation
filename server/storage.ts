@@ -115,6 +115,8 @@ export interface IStorage {
   hasGrantedScope(userId: string, scope: string): Promise<boolean>;
   grantScope(data: InsertGrantedScope): Promise<GrantedScope>;
   revokeScope(userId: string, scope: string): Promise<boolean>;
+  getAllGrantedScopes(): Promise<(GrantedScope & { username: string | null; email: string | null; fullName: string | null })[]>;
+  revokeScopeById(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -614,6 +616,35 @@ export class DatabaseStorage implements IStorage {
       .update(grantedScopes)
       .set({ revokedAt: new Date() })
       .where(and(eq(grantedScopes.userId, userId), eq(grantedScopes.scope, scope), sql`revoked_at IS NULL`))
+      .returning();
+    return r.length > 0;
+  }
+
+  async getAllGrantedScopes(): Promise<(GrantedScope & { username: string | null; email: string | null; fullName: string | null })[]> {
+    const rows = await db
+      .select({
+        id:         grantedScopes.id,
+        userId:     grantedScopes.userId,
+        scope:      grantedScopes.scope,
+        grantedBy:  grantedScopes.grantedBy,
+        grantedAt:  grantedScopes.grantedAt,
+        expiresAt:  grantedScopes.expiresAt,
+        revokedAt:  grantedScopes.revokedAt,
+        username:   users.username,
+        email:      users.email,
+        fullName:   users.fullName,
+      })
+      .from(grantedScopes)
+      .leftJoin(users, eq(grantedScopes.userId, users.id))
+      .orderBy(sql`${grantedScopes.grantedAt} DESC`);
+    return rows;
+  }
+
+  async revokeScopeById(id: string): Promise<boolean> {
+    const r = await db
+      .update(grantedScopes)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(grantedScopes.id, id), sql`revoked_at IS NULL`))
       .returning();
     return r.length > 0;
   }

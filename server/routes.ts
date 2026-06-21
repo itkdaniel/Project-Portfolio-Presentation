@@ -1422,6 +1422,21 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
     return res.json({ revoked });
   });
 
+  // GET /api/admin/granted-scopes — admin: list all granted scopes with user info
+  app.get("/api/admin/granted-scopes", requireAdmin as any, async (_req: AuthenticatedRequest, res: Response) => {
+    const scopes = await storage.getAllGrantedScopes();
+    return res.json(scopes);
+  });
+
+  // DELETE /api/admin/granted-scopes/:id — admin: revoke a scope grant by row ID
+  app.delete("/api/admin/granted-scopes/:id", requireAdmin as any, async (req: AuthenticatedRequest, res: Response) => {
+    const revoked = await storage.revokeScopeById(req.params.id as string);
+    if (!revoked) {
+      return res.status(404).json({ error: "Grant not found or already revoked" });
+    }
+    return res.json({ revoked: true });
+  });
+
   // ══════════════════════════════════════════════════════════════════════════
   // NEXUS SCRAPER — Entity Database + Scrape Jobs
   // ══════════════════════════════════════════════════════════════════════════

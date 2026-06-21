@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText, Activity, BookOpen, LogIn, UserPlus, LogOut, ClipboardCheck } from "lucide-react";
+import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText, Activity, BookOpen, LogIn, UserPlus, LogOut, ClipboardCheck, Shield } from "lucide-react";
 import { NotificationBell } from "./NotificationBell";
 
 interface MeUser { id: string; username: string; email: string; role?: string; fullName?: string; profilePictureUrl?: string; }
@@ -93,9 +93,14 @@ export function Navbar() {
             <Settings className="w-4 h-4" /> Settings
           </Link>
           {me?.role === "admin" && (
-            <Link href="/admin/approvals" className="flex items-center gap-1.5 text-sm font-medium text-yellow-400/80 hover:text-yellow-400 transition-colors" data-testid="nav-admin-approvals">
-              <ClipboardCheck className="w-4 h-4" /> Approvals
-            </Link>
+            <>
+              <Link href="/admin/approvals" className="flex items-center gap-1.5 text-sm font-medium text-yellow-400/80 hover:text-yellow-400 transition-colors" data-testid="nav-admin-approvals">
+                <ClipboardCheck className="w-4 h-4" /> Approvals
+              </Link>
+              <Link href="/admin/scopes" className="flex items-center gap-1.5 text-sm font-medium text-amber-400/80 hover:text-amber-400 transition-colors" data-testid="nav-admin-scopes">
+                <Shield className="w-4 h-4" /> AI Grants
+              </Link>
+            </>
           )}
 
           {me ? (
@@ -164,9 +169,14 @@ export function Navbar() {
             <Settings className="w-4 h-4" /> Settings
           </Link>
           {me?.role === "admin" && (
-            <Link href="/admin/approvals" className="p-2 text-sm font-medium text-yellow-400/80 hover:text-yellow-400 flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-admin-approvals-mobile">
-              <ClipboardCheck className="w-4 h-4" /> Approvals
-            </Link>
+            <>
+              <Link href="/admin/approvals" className="p-2 text-sm font-medium text-yellow-400/80 hover:text-yellow-400 flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-admin-approvals-mobile">
+                <ClipboardCheck className="w-4 h-4" /> Approvals
+              </Link>
+              <Link href="/admin/scopes" className="p-2 text-sm font-medium text-amber-400/80 hover:text-amber-400 flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-admin-scopes-mobile">
+                <Shield className="w-4 h-4" /> AI Grants
+              </Link>
+            </>
           )}
           {me ? (
             <div className="flex items-center justify-between p-2 rounded-lg bg-white/5">
