@@ -30,7 +30,7 @@ jobs:
       - name: Lint (ruff)
         run: |
           pip install ruff
-          ruff check app/ tests/ || true
+          ruff check app/ tests/
 
       - name: Run tests
         run: pytest tests/ -v --cov=app --cov-report=term-missing

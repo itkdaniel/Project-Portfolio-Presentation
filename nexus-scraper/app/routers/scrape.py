@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_session
 from app.models.entity import EntityORM, ScrapeJobORM
 from app.nlp_client import classify_and_embed
-from app.scraper import scrape_url
+from app.scraper import scrape_url, validate_url_for_fetch
 from app.trending import run_trending_scrape
 
 logger = logging.getLogger(__name__)
@@ -90,6 +90,11 @@ async def scrape_single_url(
     payload: ScrapeRequest,
     session: AsyncSession = Depends(get_session),
 ):
+    try:
+        validate_url_for_fetch(payload.url, allow_onion=False)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     job = ScrapeJobORM(target_url=payload.url, status="running")
     session.add(job)
     await session.flush()
@@ -143,6 +148,11 @@ async def scrape_onion_url(
 ):
     if not payload.url.endswith(".onion") and ".onion/" not in payload.url:
         raise HTTPException(status_code=400, detail="URL must be a .onion address")
+
+    try:
+        validate_url_for_fetch(payload.url, allow_onion=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     job = ScrapeJobORM(target_url=payload.url, status="running")
     session.add(job)

@@ -88,6 +88,105 @@ async def test_scrape_onion_sets_is_onion_flag():
     assert page.title == "Onion Site"
 
 
+# ── SSRF protection ───────────────────────────────────────────────────────────
+
+def test_validate_url_blocks_loopback():
+    from app.scraper import validate_url_for_fetch
+    import pytest
+    with pytest.raises(ValueError, match="private/reserved|loopback|SSRF"):
+        validate_url_for_fetch("http://127.0.0.1/secret")
+
+
+def test_validate_url_blocks_localhost():
+    from app.scraper import validate_url_for_fetch
+    import pytest
+    with pytest.raises(ValueError):
+        validate_url_for_fetch("http://localhost/admin")
+
+
+def test_validate_url_blocks_rfc1918_10():
+    from app.scraper import validate_url_for_fetch
+    import pytest
+    with pytest.raises(ValueError, match="private/reserved|SSRF"):
+        validate_url_for_fetch("http://10.0.0.1/internal")
+
+
+def test_validate_url_blocks_rfc1918_172():
+    from app.scraper import validate_url_for_fetch
+    import pytest
+    with pytest.raises(ValueError, match="private/reserved|SSRF"):
+        validate_url_for_fetch("http://172.16.0.1/")
+
+
+def test_validate_url_blocks_rfc1918_192():
+    from app.scraper import validate_url_for_fetch
+    import pytest
+    with pytest.raises(ValueError, match="private/reserved|SSRF"):
+        validate_url_for_fetch("http://192.168.1.1/router")
+
+
+def test_validate_url_blocks_aws_metadata():
+    from app.scraper import validate_url_for_fetch
+    import pytest
+    with pytest.raises(ValueError, match="private/reserved|SSRF"):
+        validate_url_for_fetch("http://169.254.169.254/latest/meta-data/")
+
+
+def test_validate_url_blocks_ipv6_loopback():
+    from app.scraper import validate_url_for_fetch
+    import pytest
+    with pytest.raises(ValueError, match="private/reserved|SSRF"):
+        validate_url_for_fetch("http://[::1]/")
+
+
+def test_validate_url_blocks_non_http_scheme():
+    from app.scraper import validate_url_for_fetch
+    import pytest
+    with pytest.raises(ValueError, match="Scheme"):
+        validate_url_for_fetch("file:///etc/passwd")
+
+
+def test_validate_url_blocks_ftp_scheme():
+    from app.scraper import validate_url_for_fetch
+    import pytest
+    with pytest.raises(ValueError, match="Scheme"):
+        validate_url_for_fetch("ftp://example.com/file")
+
+
+def test_validate_url_blocks_onion_without_flag():
+    from app.scraper import validate_url_for_fetch
+    import pytest
+    with pytest.raises(ValueError, match="onion"):
+        validate_url_for_fetch("http://hidden.onion/page")
+
+
+def test_validate_url_allows_onion_with_flag():
+    from app.scraper import validate_url_for_fetch
+    # Should not raise
+    validate_url_for_fetch("http://hidden.onion/page", allow_onion=True)
+
+
+def test_is_ip_blocked_loopback():
+    from app.scraper import _is_ip_blocked
+    assert _is_ip_blocked("127.0.0.1") is True
+    assert _is_ip_blocked("127.255.255.255") is True
+
+
+def test_is_ip_blocked_private_ranges():
+    from app.scraper import _is_ip_blocked
+    assert _is_ip_blocked("10.10.10.10") is True
+    assert _is_ip_blocked("172.16.100.1") is True
+    assert _is_ip_blocked("192.168.0.1") is True
+    assert _is_ip_blocked("169.254.169.254") is True
+
+
+def test_is_ip_blocked_public_addresses():
+    from app.scraper import _is_ip_blocked
+    assert _is_ip_blocked("8.8.8.8") is False
+    assert _is_ip_blocked("1.1.1.1") is False
+    assert _is_ip_blocked("151.101.1.140") is False
+
+
 # ── nlp_client.py ─────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
