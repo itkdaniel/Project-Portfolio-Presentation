@@ -138,10 +138,11 @@ describe("Notifications", () => {
   it("GET /api/notifications — returns empty list for new user initially (after test send)", async () => {
     const { status, body } = await get("/api/notifications", userToken);
     expect(status).toBe(200);
-    expect(Array.isArray(body)).toBe(true);
+    expect(typeof body.unreadCount).toBe("number");
+    expect(Array.isArray(body.notifications)).toBe(true);
     // Test send above created at least one
-    expect(body.length).toBeGreaterThanOrEqual(1);
-    notifId = body[0].id;
+    expect(body.notifications.length).toBeGreaterThanOrEqual(1);
+    notifId = body.notifications[0].id;
   });
 
   it("GET /api/notifications — requires auth", async () => {
@@ -213,9 +214,9 @@ describe("Scope Requests", () => {
     expect(status).toBe(401);
   });
 
-  it("PATCH /api/scope-requests/:id/review — admin can approve", async () => {
+  it("PATCH /api/scope-requests/:id — admin can approve", async () => {
     const { status, body } = await patch(
-      `/api/scope-requests/${scopeRequestId}/review`,
+      `/api/scope-requests/${scopeRequestId}`,
       { status: "approved", adminNote: "Approved for research use." },
       adminToken,
     );
@@ -224,18 +225,18 @@ describe("Scope Requests", () => {
     expect(body.adminNote).toBe("Approved for research use.");
   });
 
-  it("PATCH /api/scope-requests/:id/review — non-admin cannot review", async () => {
+  it("PATCH /api/scope-requests/:id — non-admin cannot review", async () => {
     const { status } = await patch(
-      `/api/scope-requests/${scopeRequestId}/review`,
+      `/api/scope-requests/${scopeRequestId}`,
       { status: "denied" },
       userToken,
     );
     expect(status).toBe(403);
   });
 
-  it("PATCH /api/scope-requests/:id/review — rejects invalid status", async () => {
+  it("PATCH /api/scope-requests/:id — rejects invalid status", async () => {
     const { status } = await patch(
-      `/api/scope-requests/${scopeRequestId}/review`,
+      `/api/scope-requests/${scopeRequestId}`,
       { status: "maybe" },
       adminToken,
     );
@@ -243,16 +244,14 @@ describe("Scope Requests", () => {
   });
 
   it("Approval generates a notification to the user", async () => {
-    const { body: notifs } = await get("/api/notifications", userToken);
-    // Should have a success notification from the approval
-    const approvalNotif = notifs.find((n: any) => n.type === "success" && n.title.includes("Approved"));
+    const { body } = await get("/api/notifications", userToken);
+    const approvalNotif = body.notifications.find((n: any) => n.type === "success" && n.title.includes("Approved"));
     expect(approvalNotif).toBeTruthy();
   });
 
   it("Scope request submission notifies admins", async () => {
-    // Admin should have a scope_request notification
-    const { body: adminNotifs } = await get("/api/notifications", adminToken);
-    const scopeNotif = adminNotifs.find((n: any) => n.type === "scope_request");
+    const { body } = await get("/api/notifications", adminToken);
+    const scopeNotif = body.notifications.find((n: any) => n.type === "scope_request");
     expect(scopeNotif).toBeTruthy();
     expect(scopeNotif.link).toBe("/admin/approvals");
   });

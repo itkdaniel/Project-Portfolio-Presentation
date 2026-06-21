@@ -422,7 +422,12 @@ export const userNotificationPrefs = pgTable("user_notification_prefs", {
 });
 
 export const insertNotifPrefsSchema = createInsertSchema(userNotificationPrefs).omit({ id: true, updatedAt: true });
-export const updateNotifPrefsSchema = insertNotifPrefsSchema.partial().omit({ userId: true });
+export const updateNotifPrefsSchema = insertNotifPrefsSchema
+  .partial()
+  .omit({ userId: true })
+  .extend({
+    smsPhone: z.string().regex(/^\+[1-9]\d{1,14}$/, "Phone must be E.164 format, e.g. +15550001234").optional().nullable(),
+  });
 export type InsertNotifPrefs = z.infer<typeof insertNotifPrefsSchema>;
 export type UpdateNotifPrefs = z.infer<typeof updateNotifPrefsSchema>;
 export type UserNotificationPrefs = typeof userNotificationPrefs.$inferSelect;

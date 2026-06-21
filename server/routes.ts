@@ -16,7 +16,7 @@ import { requireAuth, requireAdmin, generateToken, hashPassword, seedAdminUser, 
 import { seedTaxData } from "./tax-seed";
 import { initTaxScheduler } from "./tax-scheduler";
 import { loadCachedResults, runTests } from "./test-runner";
-import { sendNotification, notifyAllAdmins, testSendNotification } from "./notify";
+import { sendNotification, notifyAllAdmins, testSendNotification, generateApprovalLink, verifyApprovalToken } from "./notify";
 import {
   sendBookingConfirmationToUser,
   sendBookingNotificationToAdmin,
@@ -1189,10 +1189,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // NOTIFICATIONS
   // ══════════════════════════════════════════════════════════════════════════
 
-  // GET /api/notifications — list caller's notifications (newest first)
+  // GET /api/notifications — { unreadCount, notifications } — 20 most recent
   app.get("/api/notifications", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
-    const list = await storage.getNotifications(req.user!.id);
-    return res.json(list);
+    const all  = await storage.getNotifications(req.user!.id);
+    const unreadCount = all.filter(n => !n.read).length;
+    const notifications = all.slice(0, 20);
+    return res.json({ unreadCount, notifications });
   });
 
   // PATCH /api/notifications/read-all — mark all as read
@@ -1268,13 +1270,38 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const data = insertScopeRequestSchema.parse({ ...req.body, userId: req.user!.id });
       const created = await storage.createScopeRequest(data);
 
-      // Notify all admins
+      // Notify all admins — include HMAC-signed one-click approve/deny links in email
+      const approveLink = generateApprovalLink(created.id, "approved");
+      const denyLink    = generateApprovalLink(created.id, "denied");
       await notifyAllAdmins({
         type:         "scope_request",
         title:        "New Scope Request",
-        body:         `User ${req.user!.id} requested access to scope "${data.scopeName}".`,
+        body:         `A user requested access to scope "${data.scopeName}". Use the links below to approve or deny without logging in.`,
         link:         "/admin/approvals",
         emailSubject: `[NexusConsult] Scope Request: ${data.scopeName}`,
+        emailHtml: `
+<!DOCTYPE html><html><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#09090b;font-family:'Inter',Arial,sans-serif;color:#e4e4e7;">
+<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:40px 20px;">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#18181b;border-radius:12px;border:1px solid rgba(255,255,255,0.08);">
+<tr><td style="background:linear-gradient(135deg,#1e3a5f 0%,#1a1a2e 100%);padding:32px 40px;text-align:center;">
+<h1 style="margin:0;font-size:20px;font-weight:700;color:#f4f4f5;">New Scope Request</h1>
+</td></tr>
+<tr><td style="padding:32px 40px;">
+<p style="color:#d4d4d8;line-height:1.6;">A user has requested access to scope: <strong style="color:#f4f4f5;">${data.scopeName}</strong></p>
+${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3b82f6;padding-left:12px;">${data.reason}</p>` : ""}
+<p style="color:#d4d4d8;margin-top:24px;">Use the one-click actions below (valid for 48 hours):</p>
+<table cellpadding="0" cellspacing="0" style="margin-top:16px;">
+<tr>
+<td style="padding-right:12px;"><a href="${approveLink}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;padding:10px 24px;border-radius:9999px;font-weight:600;font-size:14px;">✓ Approve</a></td>
+<td><a href="${denyLink}" style="display:inline-block;background:#dc2626;color:#fff;text-decoration:none;padding:10px 24px;border-radius:9999px;font-weight:600;font-size:14px;">✗ Deny</a></td>
+</tr>
+</table>
+<p style="color:#71717a;font-size:12px;margin-top:24px;">Or <a href="/admin/approvals" style="color:#3b82f6;">view all pending requests</a> in the admin panel.</p>
+<p style="color:#71717a;font-size:12px;">NexusConsult — Automation &amp; Consulting Services</p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`,
       });
 
       // Notify the requesting user
@@ -1292,8 +1319,47 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // PATCH /api/scope-requests/:id/review — admin approves or denies
-  app.patch("/api/scope-requests/:id/review", requireAdmin as any, async (req: AuthenticatedRequest, res: Response) => {
+  // GET /api/scope-requests/:id/confirm — HMAC-signed one-click approval/denial from email
+  app.get("/api/scope-requests/:id/confirm", async (req: Request, res: Response) => {
+    const action = req.query.action as string | undefined;
+    const exp    = req.query.exp    as string | undefined;
+    const sig    = req.query.sig    as string | undefined;
+    if (!action || !exp || !sig) {
+      return res.redirect("/admin/approvals?error=missing_params");
+    }
+    if (action !== "approved" && action !== "denied") {
+      return res.redirect("/admin/approvals?error=invalid_action");
+    }
+    const rid = req.params.id as string;
+    if (!verifyApprovalToken(rid, action, exp, sig)) {
+      return res.redirect("/admin/approvals?error=invalid_or_expired_token");
+    }
+    const existing = await storage.getScopeRequest(rid);
+    if (!existing) {
+      return res.redirect("/admin/approvals?error=not_found");
+    }
+    if (existing.status !== "pending") {
+      return res.redirect(`/admin/approvals?error=already_reviewed&id=${rid}`);
+    }
+    const updated = await storage.reviewScopeRequest(
+      rid,
+      "system",  // one-click action — no logged-in reviewer
+      { status: action, adminNote: "Approved via one-click email link." },
+    );
+    if (updated) {
+      await sendNotification(updated.userId, {
+        type:         action === "approved" ? "success" : "warning",
+        title:        `Scope Request ${action === "approved" ? "Approved" : "Denied"}`,
+        body:         `Your request for "${updated.scopeName}" was ${action} via quick-action email link.`,
+        link:         "/notifications",
+        emailSubject: `[NexusConsult] Scope Request ${action === "approved" ? "Approved" : "Denied"}`,
+      });
+    }
+    return res.redirect(`/admin/approvals?confirmed=${req.params.id}&action=${action}`);
+  });
+
+  // PATCH /api/scope-requests/:id — admin approves or denies
+  app.patch("/api/scope-requests/:id", requireAdmin as any, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = updateScopeRequestSchema.parse(req.body);
       const updated = await storage.reviewScopeRequest(req.params.id as string, req.user!.id, data);

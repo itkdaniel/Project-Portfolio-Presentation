@@ -49,12 +49,14 @@ export function NotificationBell() {
   const panelRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
 
-  const { data: notifs = [] } = useQuery<AppNotification[]>({
+  const { data: resp } = useQuery<{ unreadCount: number; notifications: AppNotification[] }>({
     queryKey: ["/api/notifications"],
     queryFn:  () => apiFetch("/api/notifications"),
     enabled:  !!token,
     refetchInterval: 30_000,
   });
+  const notifs  = resp?.notifications ?? [];
+  const unreadCount = resp?.unreadCount ?? 0;
 
   const markRead = useMutation({
     mutationFn: (id: string) =>
@@ -79,7 +81,7 @@ export function NotificationBell() {
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const unread = notifs.filter(n => !n.read);
+  const unread  = notifs.filter(n => !n.read);
   const preview = notifs.slice(0, 6);
 
   if (!token) return null;
@@ -93,12 +95,12 @@ export function NotificationBell() {
         data-testid="btn-notification-bell"
       >
         <Bell className="w-5 h-5" />
-        {unread.length > 0 && (
+        {unreadCount > 0 && (
           <span
             className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center px-0.5"
             data-testid="notif-unread-count"
           >
-            {unread.length > 9 ? "9+" : unread.length}
+            {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}
       </button>
@@ -113,12 +115,12 @@ export function NotificationBell() {
             <div className="flex items-center gap-2">
               <Bell className="w-4 h-4 text-primary" />
               <span className="font-semibold text-sm">Notifications</span>
-              {unread.length > 0 && (
-                <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">{unread.length}</span>
+              {unreadCount > 0 && (
+                <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">{unreadCount}</span>
               )}
             </div>
             <div className="flex items-center gap-1">
-              {unread.length > 0 && (
+              {unreadCount > 0 && (
                 <button
                   onClick={() => markAllRead.mutate()}
                   className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 px-2 py-1 rounded"

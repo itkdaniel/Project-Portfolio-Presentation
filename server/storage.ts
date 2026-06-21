@@ -84,6 +84,7 @@ export interface IStorage {
   // Scope requests
   getScopeRequests(status?: string): Promise<(ScopeRequest & { username?: string | null; email?: string | null; fullName?: string | null })[]>;
   getScopeRequestsByUser(userId: string): Promise<ScopeRequest[]>;
+  getScopeRequest(id: string): Promise<ScopeRequest | undefined>;
   createScopeRequest(data: InsertScopeRequest): Promise<ScopeRequest>;
   reviewScopeRequest(id: string, reviewedBy: string, data: UpdateScopeRequest): Promise<ScopeRequest | undefined>;
 }
@@ -437,6 +438,11 @@ export class DatabaseStorage implements IStorage {
       .from(scopeRequests)
       .where(eq(scopeRequests.userId, userId))
       .orderBy(desc(scopeRequests.createdAt));
+  }
+
+  async getScopeRequest(id: string): Promise<ScopeRequest | undefined> {
+    const [r] = await db.select().from(scopeRequests).where(eq(scopeRequests.id, id));
+    return r;
   }
 
   async createScopeRequest(data: InsertScopeRequest): Promise<ScopeRequest> {

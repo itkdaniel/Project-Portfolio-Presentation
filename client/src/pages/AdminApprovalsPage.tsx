@@ -62,7 +62,7 @@ function ReviewPanel({ req, onClose }: { req: ScopeRequestWithUser; onClose: () 
 
   const decide = useMutation({
     mutationFn: ({ status }: { status: "approved" | "denied" }) =>
-      apiFetch(`/api/scope-requests/${req.id}/review`, {
+      apiFetch(`/api/scope-requests/${req.id}`, {
         method: "PATCH",
         body: JSON.stringify({ status, adminNote: note || undefined }),
       }),

@@ -69,12 +69,13 @@ export default function NotificationsPage() {
   const qc = useQueryClient();
   const [filter, setFilter] = useState<FilterTab>("all");
 
-  const { data: notifs = [], isLoading } = useQuery<AppNotification[]>({
+  const { data: resp, isLoading } = useQuery<{ unreadCount: number; notifications: AppNotification[] }>({
     queryKey: ["/api/notifications"],
     queryFn:  () => apiFetch("/api/notifications"),
     enabled:  isAuthenticated,
     refetchInterval: 15_000,
   });
+  const notifs = resp?.notifications ?? [];
 
   const markRead = useMutation({
     mutationFn: (id: string) => apiFetch(`/api/notifications/${id}/read`, { method: "PATCH" }),

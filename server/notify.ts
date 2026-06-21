@@ -5,6 +5,7 @@
  * SMS is a no-op (logged warning) when Twilio env vars are absent.
  */
 
+import { createHmac, timingSafeEqual } from "crypto";
 import { db } from "./db";
 import { users, userNotificationPrefs, notifications } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -123,6 +124,45 @@ ${payload.link ? `<p style="margin-top:24px;"><a href="${payload.link}" style="d
 export async function notifyAllAdmins(payload: NotifyPayload): Promise<void> {
   const admins = await db.select().from(users).where(eq(users.role, "admin"));
   await Promise.all(admins.map(a => sendNotification(a.id, payload)));
+}
+
+// ── HMAC-signed one-click approval links ──────────────────────────────────────
+
+function getSigningKey(): string {
+  return process.env.FIELD_ENCRYPTION_KEY ?? "dev-fallback-key-do-not-use-in-prod";
+}
+
+/**
+ * Generate a signed URL for one-click scope request approval/denial in admin emails.
+ * Token expires in 48 hours. Uses HMAC-SHA256 with FIELD_ENCRYPTION_KEY.
+ */
+export function generateApprovalLink(scopeRequestId: string, action: "approved" | "denied"): string {
+  const exp = Math.floor(Date.now() / 1000) + 48 * 3600; // 48h from now
+  const payload = `${scopeRequestId}:${action}:${exp}`;
+  const sig = createHmac("sha256", getSigningKey()).update(payload).digest("hex");
+  const base = process.env.APP_URL ?? "http://localhost:5000";
+  return `${base}/api/scope-requests/${scopeRequestId}/confirm?action=${action}&exp=${exp}&sig=${sig}`;
+}
+
+/**
+ * Verify a one-click approval link token.
+ * Returns false if expired, tampered, or malformed.
+ */
+export function verifyApprovalToken(scopeRequestId: string, action: string, exp: string, sig: string): boolean {
+  const now = Math.floor(Date.now() / 1000);
+  const expNum = parseInt(exp, 10);
+  if (!expNum || expNum < now) return false;
+  const payload = `${scopeRequestId}:${action}:${exp}`;
+  const expected = createHmac("sha256", getSigningKey()).update(payload).digest("hex");
+  try {
+    // Constant-time comparison to prevent timing attacks
+    const sigBuf      = Buffer.from(sig,      "hex");
+    const expectedBuf = Buffer.from(expected, "hex");
+    if (sigBuf.length !== expectedBuf.length) return false;
+    return timingSafeEqual(sigBuf, expectedBuf);
+  } catch {
+    return false;
+  }
 }
 
 // ── Test-send (one message per enabled channel) ────────────────────────────────
