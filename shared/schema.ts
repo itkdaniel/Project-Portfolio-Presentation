@@ -67,8 +67,8 @@ export const registerSchema = z.object({
   fullName:  z.string().min(2, "Full name must be at least 2 characters").regex(/\S.*\S|\S/, "Full name required"),
 });
 export const updateProfileSchema = z.object({
-  fullName:          z.string().min(2).optional(),
-  mobile:            z.string().max(30).optional(),
+  fullName:          z.string().trim().min(2, "Full name must be at least 2 characters").max(100).optional(),
+  mobile:            z.string().regex(/^[+\d\s\-().]{7,20}$/, "Invalid phone number format").optional().or(z.literal("")),
   location:          z.string().max(100).optional(),
   bio:               z.string().max(500).optional(),
   profilePictureUrl: z.string().optional(),

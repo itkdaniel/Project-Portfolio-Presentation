@@ -15,7 +15,7 @@ import {
   User, Bell, Palette, Shield, Mail, Plug,
   Github, Linkedin, Globe, Save, RefreshCw,
   CheckCircle, AlertCircle, Eye, EyeOff,
-  ChevronRight, Settings as SettingsIcon
+  ChevronRight, Settings as SettingsIcon, X
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -113,20 +113,30 @@ const SECTIONS: { id: SectionId; label: string; icon: React.ReactNode; descripti
 
 // ── Main Settings page ────────────────────────────────────────────────────────
 
+// Sections visible to guests (read-only profile only)
+const GUEST_SECTIONS: SectionId[] = ["profile"];
+// Sections that require auth to render
+const AUTH_REQUIRED_SECTIONS: SectionId[] = ["notifications", "appearance", "security", "email", "integrations"];
+
 export default function Settings() {
+  const token = typeof localStorage !== "undefined" ? localStorage.getItem("nexus_token") : null;
+  const isAuthenticated = !!token;
   const [activeSection, setActiveSection] = useState<SectionId>("profile");
   const { toast } = useToast();
   const qc = useQueryClient();
 
+  // Only fetch settings when authenticated
   const { data: settings, isLoading: settingsLoading } = useQuery<UserSettingsData>({
     queryKey: ["/api/settings"],
     queryFn:  () => apiGet("/api/settings"),
+    enabled:  isAuthenticated,
     retry: false,
   });
 
   const { data: emailCfg, isLoading: emailLoading } = useQuery<EmailConfigData>({
     queryKey: ["/api/settings/email-config"],
     queryFn:  () => apiGet("/api/settings/email-config"),
+    enabled:  isAuthenticated,
     retry: false,
   });
 
@@ -148,7 +158,16 @@ export default function Settings() {
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const currentSection = SECTIONS.find(s => s.id === activeSection)!;
+  // Visible sections: guests only see Profile
+  const visibleSections = isAuthenticated ? SECTIONS : SECTIONS.filter(s => GUEST_SECTIONS.includes(s.id));
+  const currentSection = (visibleSections.find(s => s.id === activeSection) ?? visibleSections[0])!;
+
+  // If current active section is no longer visible (e.g., user just logged out), reset to profile
+  if (!visibleSections.find(s => s.id === activeSection)) {
+    setActiveSection("profile");
+  }
+
+  const isLoadingSection = settingsLoading && AUTH_REQUIRED_SECTIONS.includes(activeSection);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -173,7 +192,7 @@ export default function Settings() {
           {/* Sidebar */}
           <aside className="w-full md:w-64 shrink-0">
             <nav className="glass-panel rounded-xl border border-white/5 p-2 space-y-1" data-testid="settings-sidebar">
-              {SECTIONS.map(section => (
+              {visibleSections.map(section => (
                 <button
                   key={section.id}
                   data-testid={`settings-nav-${section.id}`}
@@ -201,12 +220,18 @@ export default function Settings() {
               </div>
               <Separator className="mb-6 opacity-20" />
 
-              {settingsLoading && activeSection !== "email" ? (
+              {isLoadingSection ? (
                 <div className="flex items-center gap-2 text-muted-foreground"><RefreshCw className="w-4 h-4 animate-spin" /> Loading…</div>
               ) : (
                 <>
-                  {activeSection === "profile" && settings && (
-                    <ProfileSection settings={settings} onSave={data => patchSettings.mutate(data)} saving={patchSettings.isPending} />
+                  {/* Profile: always rendered, guest-aware internally */}
+                  {activeSection === "profile" && (
+                    <ProfileSection
+                      settings={settings ?? null}
+                      onSave={data => patchSettings.mutate(data)}
+                      saving={patchSettings.isPending}
+                      isAuthenticated={isAuthenticated}
+                    />
                   )}
                   {activeSection === "notifications" && settings && (
                     <NotificationsSection settings={settings} onSave={data => patchSettings.mutate(data)} saving={patchSettings.isPending} />
@@ -214,10 +239,11 @@ export default function Settings() {
                   {activeSection === "appearance" && settings && (
                     <AppearanceSection settings={settings} onSave={data => patchSettings.mutate(data)} saving={patchSettings.isPending} />
                   )}
-                  {activeSection === "security" && (
+                  {/* Security: hidden for guests entirely */}
+                  {activeSection === "security" && isAuthenticated && (
                     <SecuritySection />
                   )}
-                  {activeSection === "email" && (
+                  {activeSection === "email" && isAuthenticated && (
                     emailLoading ? (
                       <div className="flex items-center gap-2 text-muted-foreground"><RefreshCw className="w-4 h-4 animate-spin" /> Loading…</div>
                     ) : (
@@ -249,9 +275,11 @@ interface ExtendedProfile {
   profilePictureUrl?: string;
 }
 
+type MeData = ExtendedProfile & { username: string; email: string };
+
 function useExtendedProfile(token: string | null) {
   const qc = useQueryClient();
-  const { data: me, isLoading } = useQuery<ExtendedProfile & { username: string; email: string }>({
+  const { data: me, isLoading } = useQuery<MeData>({
     queryKey: ["/api/auth/me"],
     queryFn: async () => {
       const res = await fetch("/api/auth/me", { headers: token ? { Authorization: `Bearer ${token}` } : {} });
@@ -278,29 +306,52 @@ function useExtendedProfile(token: string | null) {
   return { me, isLoading, save };
 }
 
-function ProfileSection({ settings, onSave, saving }: { settings: UserSettingsData; onSave: (d: any) => void; saving: boolean }) {
+function validateProfileForm(form: ExtendedProfile): Record<string, string> {
+  const errs: Record<string, string> = {};
+  if (form.fullName !== undefined && form.fullName !== "") {
+    const trimmed = form.fullName.trim();
+    if (trimmed.length < 2) errs.fullName = "Full name must be at least 2 characters";
+    else if (!trimmed) errs.fullName = "Full name cannot be blank";
+  }
+  if (form.mobile !== undefined && form.mobile !== "") {
+    if (!/^[+\d\s\-().]{7,20}$/.test(form.mobile)) {
+      errs.mobile = "Invalid phone number (7–20 chars, digits/spaces/+/-/().)";
+    }
+  }
+  return errs;
+}
+
+function ProfileSection({ settings, onSave, saving, isAuthenticated }: {
+  settings: UserSettingsData | null;
+  onSave: (d: any) => void;
+  saving: boolean;
+  isAuthenticated: boolean;
+}) {
   const token = typeof localStorage !== "undefined" ? localStorage.getItem("nexus_token") : null;
-  const isGuest = !token;
   const { toast } = useToast();
   const { me, save } = useExtendedProfile(token);
 
+  const defaultSettings: UserSettingsData = {
+    displayName: "", bio: "", avatarUrl: "", githubUrl: "", linkedinUrl: "", websiteUrl: "",
+    timezone: "UTC", language: "en", theme: "dark", compactMode: false, sidebarCollapsed: false,
+    emailNotifications: true, notifyBookingConfirm: true, notifyNewBooking: false,
+    notifyNewInquiry: false, notifyProjectUpdates: false, notifyWeeklyDigest: false, notifySecurityAlerts: true,
+  };
+  const effectiveSettings = settings ?? defaultSettings;
+
   const [settingsForm, setSettingsForm] = useState({
-    displayName: settings.displayName ?? "",
-    bio:         settings.bio ?? "",
-    avatarUrl:   settings.avatarUrl ?? "",
-    timezone:    settings.timezone,
-    language:    settings.language,
+    displayName: effectiveSettings.displayName ?? "",
+    bio:         effectiveSettings.bio ?? "",
+    avatarUrl:   effectiveSettings.avatarUrl ?? "",
+    timezone:    effectiveSettings.timezone,
+    language:    effectiveSettings.language,
   });
 
   const [profileForm, setProfileForm] = useState<ExtendedProfile>({
-    fullName:          "",
-    position:          "",
-    mobile:            "",
-    location:          "",
-    bio:               "",
-    profilePictureUrl: "",
+    fullName: "", position: "", mobile: "", location: "", bio: "", profilePictureUrl: "",
   });
-
+  const [profileErrors, setProfileErrors] = useState<Record<string, string>>({});
+  const [profileDirty, setProfileDirty] = useState(false);
   const [profileInitialized, setProfileInitialized] = useState(false);
 
   if (me && !profileInitialized) {
@@ -315,24 +366,43 @@ function ProfileSection({ settings, onSave, saving }: { settings: UserSettingsDa
     setProfileInitialized(true);
   }
 
-  const pf = (k: keyof ExtendedProfile) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+  const pf = (k: keyof ExtendedProfile) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setProfileForm(f => ({ ...f, [k]: e.target.value }));
+    setProfileDirty(true);
+    if (profileErrors[k]) setProfileErrors(prev => { const n = { ...prev }; delete n[k]; return n; });
+  };
+
+  function handleProfileCancel() {
+    if (me) {
+      setProfileForm({
+        fullName: me.fullName ?? "", position: me.position ?? "",
+        mobile: me.mobile ?? "", location: me.location ?? "",
+        bio: me.bio ?? "", profilePictureUrl: me.profilePictureUrl ?? "",
+      });
+    }
+    setProfileDirty(false);
+    setProfileErrors({});
+  }
 
   async function handleProfileSave() {
+    const errs = validateProfileForm(profileForm);
+    if (Object.keys(errs).length) { setProfileErrors(errs); return; }
     try {
       await save.mutateAsync(profileForm);
+      setProfileDirty(false);
       toast({ title: "Profile updated" });
     } catch (e: any) {
       toast({ title: "Error saving profile", description: e.message, variant: "destructive" });
     }
   }
 
-  const initials = ((profileForm.fullName || me?.username) ?? "?").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+  const displayName = profileForm.fullName || me?.username || "You";
+  const initials = displayName.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2);
 
   return (
     <div className="space-y-8">
       {/* Guest read-only banner */}
-      {isGuest && (
+      {!isAuthenticated && (
         <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground" data-testid="profile-guest-notice">
           <span className="font-medium text-foreground">Read-only mode.</span>{" "}
           <a href="/login" className="text-primary hover:underline">Sign in</a> or{" "}
@@ -341,24 +411,33 @@ function ProfileSection({ settings, onSave, saving }: { settings: UserSettingsDa
       )}
 
       {/* Extended profile — backed by /api/users/profile */}
-      <fieldset disabled={isGuest} className="space-y-5 disabled:opacity-60">
+      <fieldset disabled={!isAuthenticated} className="space-y-5 disabled:opacity-60 disabled:pointer-events-none">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Professional Info</h3>
 
-        {/* Avatar preview */}
-        <div className="flex items-center gap-4">
+        {/* Avatar + email row */}
+        <div className="flex items-start gap-4">
           {profileForm.profilePictureUrl ? (
             <img src={profileForm.profilePictureUrl} alt="Avatar"
-              className="w-16 h-16 rounded-full object-cover border-2 border-primary/20"
+              className="w-16 h-16 rounded-full object-cover border-2 border-primary/20 shrink-0"
               onError={e => (e.currentTarget.style.display = "none")} />
           ) : (
-            <div className="w-16 h-16 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center">
+            <div className="w-16 h-16 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center shrink-0">
               <span className="text-xl font-bold text-primary">{initials}</span>
             </div>
           )}
-          <div className="flex-1 space-y-1.5">
-            <Label htmlFor="profilePictureUrl">Profile Picture URL</Label>
-            <Input id="profilePictureUrl" data-testid="input-profilePictureUrl" value={profileForm.profilePictureUrl ?? ""}
-              onChange={pf("profilePictureUrl")} placeholder="https://…" className="bg-background/50" />
+          <div className="flex-1 space-y-3">
+            {/* Email — read-only display */}
+            {me?.email && (
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Email (account)</Label>
+                <p className="text-sm font-medium text-foreground" data-testid="display-email">{me.email}</p>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="profilePictureUrl">Profile Picture URL</Label>
+              <Input id="profilePictureUrl" data-testid="input-profilePictureUrl" value={profileForm.profilePictureUrl ?? ""}
+                onChange={pf("profilePictureUrl")} placeholder="https://…" className="bg-background/50" />
+            </div>
           </div>
         </div>
 
@@ -366,7 +445,9 @@ function ProfileSection({ settings, onSave, saving }: { settings: UserSettingsDa
           <div className="space-y-1.5">
             <Label htmlFor="fullName">Full Name</Label>
             <Input id="fullName" data-testid="input-fullName" value={profileForm.fullName ?? ""}
-              onChange={pf("fullName")} placeholder="Jane Smith" className="bg-background/50" />
+              onChange={pf("fullName")} placeholder="Jane Smith" className="bg-background/50"
+              aria-invalid={!!profileErrors.fullName} />
+            {profileErrors.fullName && <p className="text-xs text-red-400">{profileErrors.fullName}</p>}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="position">Job Title / Position</Label>
@@ -379,8 +460,11 @@ function ProfileSection({ settings, onSave, saving }: { settings: UserSettingsDa
           <div className="space-y-1.5">
             <Label htmlFor="mobile">Mobile</Label>
             <Input id="mobile" data-testid="input-mobile" value={profileForm.mobile ?? ""}
-              onChange={pf("mobile")} placeholder="+1 555 000 0000" className="bg-background/50" />
-            <p className="text-xs text-muted-foreground">Stored encrypted at rest.</p>
+              onChange={pf("mobile")} placeholder="+1 555 000 0000" className="bg-background/50"
+              aria-invalid={!!profileErrors.mobile} />
+            {profileErrors.mobile
+              ? <p className="text-xs text-red-400">{profileErrors.mobile}</p>
+              : <p className="text-xs text-muted-foreground">Stored encrypted at rest.</p>}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="location">Location</Label>
@@ -397,15 +481,23 @@ function ProfileSection({ settings, onSave, saving }: { settings: UserSettingsDa
             rows={3} className="bg-background/50 resize-none" />
         </div>
 
-        <Button onClick={handleProfileSave} disabled={save.isPending || isGuest} data-testid="btn-save-profile" className="gap-2">
-          {save.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          Save Profile
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={handleProfileSave} disabled={save.isPending || !isAuthenticated} data-testid="btn-save-profile" className="gap-2">
+            {save.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Save Profile
+          </Button>
+          {profileDirty && (
+            <Button variant="outline" onClick={handleProfileCancel} disabled={save.isPending} data-testid="btn-cancel-profile" className="gap-2">
+              <X className="w-4 h-4" /> Cancel
+            </Button>
+          )}
+        </div>
       </fieldset>
 
-      <Separator />
+      {isAuthenticated && <Separator />}
 
-      {/* Display settings — backed by /api/settings */}
+      {/* Display settings — backed by /api/settings — only shown when authenticated */}
+      {isAuthenticated && (
       <div className="space-y-5">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Display &amp; Preferences</h3>
 
@@ -417,7 +509,7 @@ function ProfileSection({ settings, onSave, saving }: { settings: UserSettingsDa
               placeholder="Your name" className="bg-background/50" />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="avatarUrl">Avatar URL (Settings)</Label>
+            <Label htmlFor="avatarUrl">Avatar URL</Label>
             <Input id="avatarUrl" data-testid="input-avatarUrl" value={settingsForm.avatarUrl}
               onChange={e => setSettingsForm(f => ({ ...f, avatarUrl: e.target.value }))}
               placeholder="https://…" className="bg-background/50" />
@@ -425,7 +517,7 @@ function ProfileSection({ settings, onSave, saving }: { settings: UserSettingsDa
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="settings-bio">Bio (Display Settings)</Label>
+          <Label htmlFor="settings-bio">Bio</Label>
           <Textarea id="settings-bio" data-testid="input-bio" value={settingsForm.bio}
             onChange={e => setSettingsForm(f => ({ ...f, bio: e.target.value }))}
             placeholder="Short bio…" rows={2} className="bg-background/50 resize-none" />
@@ -465,6 +557,7 @@ function ProfileSection({ settings, onSave, saving }: { settings: UserSettingsDa
 
         <SaveButton onClick={() => onSave(settingsForm)} saving={saving} />
       </div>
+      )}
     </div>
   );
 }

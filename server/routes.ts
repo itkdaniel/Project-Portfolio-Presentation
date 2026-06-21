@@ -180,13 +180,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }).returning();
       const token = generateToken(user.id, user.role);
 
-      // Fire-and-forget confirmation email
-      const cfg = await getEmailConfig();
-      if (cfg?.enabled) {
-        sendEmail({
-          to: email,
-          subject: "Welcome to NexusConsult — Account Confirmed",
-          html: `
+      // Fire-and-forget confirmation email — always attempts; falls back to console log when SMTP disabled
+      sendEmail({
+        to: email,
+        subject: "Welcome to NexusConsult — Account Confirmed",
+        html: `
 <!DOCTYPE html><html><head><meta charset="UTF-8"/></head>
 <body style="margin:0;padding:0;background:#09090b;font-family:'Inter',Arial,sans-serif;color:#e4e4e7;">
 <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:40px 20px;">
@@ -201,9 +199,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
-          text: `Welcome, ${fullName || username}! Your NexusConsult account is ready. Log in at https://nexusconsult.dev`,
-        }).catch(() => {});
-      }
+        text: `Welcome, ${fullName || username}! Your NexusConsult account is ready. Log in at https://nexusconsult.dev`,
+      }).catch(() => {});
 
       return res.status(201).json({ token, user: { id: user.id, username: user.username, email: user.email, role: user.role, fullName: user.fullName } });
     } catch (e) {
