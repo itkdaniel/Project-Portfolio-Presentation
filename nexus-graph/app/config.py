@@ -18,6 +18,11 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["*"]
 
+    # Admin token for protected write endpoints (e.g. POST /v1/graph/relations).
+    # Set NEXUS_GRAPH_ADMIN_TOKEN in the environment to enable auth enforcement.
+    # When empty (default), auth is not enforced — suitable for local dev only.
+    admin_token: str = ""
+
     class Config:
         env_file = ".env"
         extra = "ignore"

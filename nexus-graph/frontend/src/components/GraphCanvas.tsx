@@ -114,12 +114,12 @@ export default function GraphCanvas({
       if (!clusterMode || Object.keys(clusters).length === 0) return;
 
       // Group node positions by cluster
-      const clusterPoints: Record<number, { x: number; y: number; label: string }[]> = {};
+      const clusterPoints: Record<number, { x: number; y: number; label: string; relationCount: number }[]> = {};
       for (const node of graphData.nodes as any[]) {
         const cid = clusters[node.id];
         if (cid === undefined || node.x == null || node.y == null) continue;
         if (!clusterPoints[cid]) clusterPoints[cid] = [];
-        clusterPoints[cid].push({ x: node.x, y: node.y, label: node.label });
+        clusterPoints[cid].push({ x: node.x, y: node.y, label: node.label, relationCount: node.relationCount ?? 0 });
       }
 
       for (const [cidStr, points] of Object.entries(clusterPoints)) {
@@ -144,15 +144,16 @@ export default function GraphCanvas({
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Cluster label at centroid
+        // Cluster label at centroid — use the most-connected node's label
         const cx = points.reduce((s, p) => s + p.x, 0) / points.length;
         const cy = points.reduce((s, p) => s + p.y, 0) / points.length;
-        const repr = points.sort((a, b) => b.label.length - a.label.length)[0];
+        const repr = [...points].sort((a, b) => b.relationCount - a.relationCount)[0];
+        const clusterLabel = repr.label.length > 18 ? repr.label.slice(0, 16) + "…" : repr.label;
         ctx.font = "bold 9px Inter, system-ui, sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillStyle = stroke.replace("0.55", "0.9");
-        ctx.fillText(`C${cid}`, cx, cy);
+        ctx.fillText(clusterLabel, cx, cy);
       }
     },
     [clusterMode, clusters, graphData.nodes]

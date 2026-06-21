@@ -20,9 +20,13 @@ from app.models.graph import (
 )
 
 
+ADMIN_TOKEN = "test-admin-secret"
+
+
 @pytest.fixture
-def app():
-    """Create a fresh app instance with DB init skipped."""
+def app(monkeypatch):
+    """Create a fresh app instance with DB init skipped and admin token configured."""
+    monkeypatch.setenv("NEXUS_GRAPH_ADMIN_TOKEN", ADMIN_TOKEN)
     with patch("app.database.init_db"), patch("app.database.close_db", new_callable=AsyncMock):
         from app.main import create_app
         return create_app()
@@ -243,12 +247,11 @@ async def test_get_subgraph_404(client):
 async def test_post_relation_returns_201(client):
     mock_edge = GraphEdge(id=99, source="n1", target="n2", relationType="mentions", weight=1.5)
     with patch("app.routers.graph.engine.create_relation", new_callable=AsyncMock, return_value=mock_edge):
-        res = await client.post("/v1/graph/relations", json={
-            "fromEntityId": "n1",
-            "toEntityId": "n2",
-            "relationType": "mentions",
-            "weight": 1.5,
-        })
+        res = await client.post(
+            "/v1/graph/relations",
+            json={"fromEntityId": "n1", "toEntityId": "n2", "relationType": "mentions", "weight": 1.5},
+            headers={"X-Admin-Token": ADMIN_TOKEN},
+        )
     assert res.status_code == 201
     body = res.json()
     assert body["id"] == 99
@@ -256,11 +259,35 @@ async def test_post_relation_returns_201(client):
 
 
 @pytest.mark.asyncio
+async def test_post_relation_no_token_returns_401(client):
+    """Missing X-Admin-Token header when auth is configured → 401."""
+    res = await client.post(
+        "/v1/graph/relations",
+        json={"fromEntityId": "n1", "toEntityId": "n2"},
+    )
+    assert res.status_code == 401
+    assert res.json()["detail"]["error"] == "unauthorized"
+
+
+@pytest.mark.asyncio
+async def test_post_relation_wrong_token_returns_403(client):
+    """Wrong X-Admin-Token value when auth is configured → 403."""
+    res = await client.post(
+        "/v1/graph/relations",
+        json={"fromEntityId": "n1", "toEntityId": "n2"},
+        headers={"X-Admin-Token": "wrong-secret"},
+    )
+    assert res.status_code == 403
+    assert res.json()["detail"]["error"] == "forbidden"
+
+
+@pytest.mark.asyncio
 async def test_post_relation_same_source_target_returns_400(client):
-    res = await client.post("/v1/graph/relations", json={
-        "fromEntityId": "same",
-        "toEntityId": "same",
-    })
+    res = await client.post(
+        "/v1/graph/relations",
+        json={"fromEntityId": "same", "toEntityId": "same"},
+        headers={"X-Admin-Token": ADMIN_TOKEN},
+    )
     assert res.status_code == 400
 
 
@@ -268,18 +295,19 @@ async def test_post_relation_same_source_target_returns_400(client):
 async def test_post_relation_missing_entity_returns_404(client):
     with patch("app.routers.graph.engine.create_relation",
                new_callable=AsyncMock, side_effect=ValueError("Entity not found: x")):
-        res = await client.post("/v1/graph/relations", json={
-            "fromEntityId": "x",
-            "toEntityId": "y",
-        })
+        res = await client.post(
+            "/v1/graph/relations",
+            json={"fromEntityId": "x", "toEntityId": "y"},
+            headers={"X-Admin-Token": ADMIN_TOKEN},
+        )
     assert res.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_post_relation_weight_out_of_range_returns_422(client):
-    res = await client.post("/v1/graph/relations", json={
-        "fromEntityId": "a",
-        "toEntityId": "b",
-        "weight": 99.9,
-    })
+    res = await client.post(
+        "/v1/graph/relations",
+        json={"fromEntityId": "a", "toEntityId": "b", "weight": 99.9},
+        headers={"X-Admin-Token": ADMIN_TOKEN},
+    )
     assert res.status_code == 422

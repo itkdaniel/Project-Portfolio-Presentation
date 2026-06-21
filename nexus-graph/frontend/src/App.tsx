@@ -42,9 +42,15 @@ export default function App() {
         if (replace) {
           return { nodes: nodesRes.nodes, links };
         }
-        const existingIds = new Set(prev.nodes.map((n) => n.id));
-        const newNodes = nodesRes.nodes.filter((n) => !existingIds.has(n.id));
-        return { nodes: [...prev.nodes, ...newNodes], links };
+        const existingNodeIds = new Set(prev.nodes.map((n) => n.id));
+        const newNodes = nodesRes.nodes.filter((n) => !existingNodeIds.has(n.id));
+        // Merge links: keep all existing edges, append only new ones (deduplicate by id)
+        const existingLinkIds = new Set(prev.links.map((l: any) => l.id));
+        const dedupedNewLinks = links.filter((l: any) => !existingLinkIds.has(l.id));
+        return {
+          nodes: [...prev.nodes, ...newNodes],
+          links: [...prev.links, ...dedupedNewLinks],
+        };
       });
 
       setTotal(nodesRes.total);

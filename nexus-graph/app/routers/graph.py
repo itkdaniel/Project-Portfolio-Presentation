@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import JSONResponse
+import os
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 from app import graph_engine as engine
 from app.models.graph import (
@@ -15,6 +16,32 @@ from app.models.graph import (
 )
 
 router = APIRouter(prefix="/v1/graph", tags=["graph"])
+
+
+def require_admin_token(x_admin_token: str | None = Header(default=None)) -> None:
+    """Enforce admin token when NEXUS_GRAPH_ADMIN_TOKEN is configured.
+
+    Read directly from os.environ on every request so that tests using
+    monkeypatch.setenv / patch.dict(os.environ) see the correct value without
+    fighting the lru_cache on get_settings().
+
+    When the env var is not set (or empty), auth is not enforced — suitable for
+    local development only.  In production set NEXUS_GRAPH_ADMIN_TOKEN to a
+    secret value and pass it as the ``X-Admin-Token`` request header.
+    """
+    configured_token = os.environ.get("NEXUS_GRAPH_ADMIN_TOKEN", "")
+    if not configured_token:
+        return
+    if not x_admin_token:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "unauthorized", "message": "X-Admin-Token header is required"},
+        )
+    if x_admin_token != configured_token:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "forbidden", "message": "Invalid admin token"},
+        )
 
 
 @router.get("/nodes", response_model=NodesResponse, summary="List entity nodes")
@@ -58,7 +85,13 @@ async def get_subgraph(node_id: str) -> SubgraphResponse:
     return subgraph
 
 
-@router.post("/relations", response_model=GraphEdge, status_code=201, summary="Create a manual relation (admin)")
+@router.post(
+    "/relations",
+    response_model=GraphEdge,
+    status_code=201,
+    summary="Create a manual relation (admin)",
+    dependencies=[Depends(require_admin_token)],
+)
 async def create_relation(body: CreateRelationRequest) -> GraphEdge:
     if body.fromEntityId == body.toEntityId:
         raise HTTPException(status_code=400, detail={"error": "bad_request", "message": "fromEntityId and toEntityId must differ"})
