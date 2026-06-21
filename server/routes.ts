@@ -1242,7 +1242,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // PATCH /api/notification-prefs — update channel prefs
   app.patch("/api/notification-prefs", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = updateNotifPrefsSchema.parse(req.body);
+      // Normalise: UI sends smsPhone:"" when not filled — coerce to null before validation
+      const body = { ...req.body, ...(req.body.smsPhone === "" ? { smsPhone: null } : {}) };
+      const data = updateNotifPrefsSchema.parse(body);
       const updated = await storage.upsertNotifPrefs(req.user!.id, data);
       return res.json(updated);
     } catch (e) {

@@ -115,6 +115,26 @@ describe("Notification Prefs", () => {
     expect(body.smsPhone).toBe("+15550001234");
   });
 
+  it("PATCH /api/notification-prefs — coerces empty smsPhone string to null (UI payload compat)", async () => {
+    // Settings UI sends smsPhone: "" when SMS is disabled — must not 400
+    const { status, body } = await patch(
+      "/api/notification-prefs",
+      { sms: false, smsPhone: "" },
+      userToken,
+    );
+    expect(status).toBe(200);
+    expect(body.smsPhone).toBeNull();
+  });
+
+  it("PATCH /api/notification-prefs — rejects invalid (non-E.164) smsPhone", async () => {
+    const { status } = await patch(
+      "/api/notification-prefs",
+      { sms: true, smsPhone: "5551234" },
+      userToken,
+    );
+    expect(status).toBe(400);
+  });
+
   it("PATCH /api/notification-prefs — rejects unauthenticated", async () => {
     const { status } = await patch("/api/notification-prefs", { inApp: false });
     expect(status).toBe(401);
