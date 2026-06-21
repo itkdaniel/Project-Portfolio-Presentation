@@ -2,9 +2,10 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText, Activity, BookOpen, LogIn, UserPlus, LogOut } from "lucide-react";
+import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText, Activity, BookOpen, LogIn, UserPlus, LogOut, ClipboardCheck } from "lucide-react";
+import { NotificationBell } from "./NotificationBell";
 
-interface MeUser { id: string; username: string; email: string; fullName?: string; profilePictureUrl?: string; }
+interface MeUser { id: string; username: string; email: string; role?: string; fullName?: string; profilePictureUrl?: string; }
 
 function getToken() { return typeof localStorage !== "undefined" ? localStorage.getItem("nexus_token") : null; }
 
@@ -91,9 +92,15 @@ export function Navbar() {
           <Link href="/settings" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-settings">
             <Settings className="w-4 h-4" /> Settings
           </Link>
+          {me?.role === "admin" && (
+            <Link href="/admin/approvals" className="flex items-center gap-1.5 text-sm font-medium text-yellow-400/80 hover:text-yellow-400 transition-colors" data-testid="nav-admin-approvals">
+              <ClipboardCheck className="w-4 h-4" /> Approvals
+            </Link>
+          )}
 
           {me ? (
             <div className="flex items-center gap-2">
+              <NotificationBell />
               <Link href="/settings" className="flex items-center gap-2 hover:opacity-80 transition-opacity" data-testid="nav-user-profile">
                 <Avatar user={me} />
                 <span className="text-sm font-medium text-foreground hidden lg:block">{me.fullName || me.username}</span>
@@ -156,6 +163,11 @@ export function Navbar() {
           <Link href="/settings" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
             <Settings className="w-4 h-4" /> Settings
           </Link>
+          {me?.role === "admin" && (
+            <Link href="/admin/approvals" className="p-2 text-sm font-medium text-yellow-400/80 hover:text-yellow-400 flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-admin-approvals-mobile">
+              <ClipboardCheck className="w-4 h-4" /> Approvals
+            </Link>
+          )}
           {me ? (
             <div className="flex items-center justify-between p-2 rounded-lg bg-white/5">
               <div className="flex items-center gap-2">

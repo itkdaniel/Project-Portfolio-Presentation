@@ -82,19 +82,43 @@ Full-stack automation consulting platform with a dark "Tech Professional" aesthe
 - Booking emails fire-and-forget on `POST /api/bookings` (when SMTP enabled)
 - `/settings` page — 6-section sidebar: Profile, Notifications, Appearance, Security, Email Config, Integrations
 
+### Notification & Scope Approval System
+- `shared/schema.ts` — 3 new tables: `notifications`, `user_notification_prefs`, `scope_requests`
+- `server/notify.ts` — `sendNotification()` dispatcher: in-app DB + email + SMS (Twilio, graceful no-op when env absent); `notifyAllAdmins()` helper
+- `server/storage.ts` — 12 new IStorage methods for all 3 tables
+- Notification API routes:
+  - `GET /api/notifications` — list for current user (unread count in header)
+  - `PATCH /api/notifications/:id/read` — mark one read
+  - `PATCH /api/notifications/read-all` — mark all read
+  - `DELETE /api/notifications/:id` — delete one
+  - `DELETE /api/notifications/clear-read` — bulk clear read
+  - `GET/PATCH /api/notification-prefs` — per-user channel prefs (inApp / email / SMS + smsPhone)
+  - `POST /api/notification-prefs/test` — fire a test notification on enabled channels
+- Scope Request API routes:
+  - `POST /api/scope-requests` — user submits request → notifies all admins
+  - `GET /api/scope-requests` — user sees own; admin sees all with user info
+  - `PATCH /api/scope-requests/:id/review` — admin approve/deny + note → notifies requester
+- `client/src/components/layout/NotificationBell.tsx` — navbar bell: unread badge, preview dropdown, mark-all-read
+- `/notifications` page — filter tabs (all/unread/read), mark-read on click, delete, clear-read
+- `/admin/approvals` page — expandable scope request cards, inline approve/deny panel with note
+- `Settings.tsx` Notifications tab — Delivery Channels toggles (In-App / Email / SMS) + smsPhone + Test Send
+- `Navbar.tsx` — NotificationBell for auth users; yellow "Approvals" link for admins only
+- Twilio env vars: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` (optional — graceful fallback)
+
 ### Frontend
 - `client/src/pages/Settings.tsx` — full settings UI with sidebar nav + mutation hooks
-- `client/src/components/layout/Navbar.tsx` — fixed nested anchor bug; added Settings link
+- `client/src/components/layout/Navbar.tsx` — fixed nested anchor bug; added Settings + NotificationBell + Approvals links
 - `client/src/components/layout/Footer.tsx` — real GitHub/LinkedIn URLs (github.com/itkdaniel, linkedin.com/in/itkdaniel)
-- `client/src/App.tsx` — added `/settings` route
+- `client/src/App.tsx` — routes: `/settings`, `/notifications`, `/admin/approvals`
 
-### Testing (77 passing)
+### Testing (172 passing)
 - `tests/unit/auth.test.ts` — hashPassword + generateToken unit tests
 - `tests/unit/schema.test.ts` — Zod schema validation unit tests
 - `tests/unit/api.test.ts` — Full API integration tests (login, CRUD, RBAC)
 - `tests/unit/roles.test.ts` — Corporate role hierarchy + data rating access matrix + PATCH /api/users/role
 - `tests/unit/portfolio.test.ts` — Full portfolio CRUD, publish/feature, parallel creates
 - `tests/unit/settings.test.ts` — Settings CRUD, email config, change-password, test-email (23 tests)
+- `tests/unit/notifications.test.ts` — Notification prefs, notification CRUD, scope request lifecycle (20 tests)
 - `tests/regression/backwards-compat.test.ts` — Contract stability regression tests
 - `tests/e2e/booking.spec.ts` — Playwright E2E browser tests
 - `vitest.config.ts` — Configured with include/exclude patterns, JSON reporter

@@ -639,7 +639,18 @@ function ProfileSection({ settings, onSave, saving, isAuthenticated }: {
 
 // ── Notifications Section ─────────────────────────────────────────────────────
 
+interface ChannelPrefs {
+  inApp: boolean;
+  email: boolean;
+  sms: boolean;
+  smsPhone: string;
+}
+
 function NotificationsSection({ settings, onSave, saving }: { settings: UserSettingsData; onSave: (d: any) => void; saving: boolean }) {
+  const token = typeof localStorage !== "undefined" ? localStorage.getItem("nexus_token") : null;
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
   const [form, setForm] = useState({
     emailNotifications:   settings.emailNotifications,
     notifyBookingConfirm: settings.notifyBookingConfirm,
@@ -650,34 +661,182 @@ function NotificationsSection({ settings, onSave, saving }: { settings: UserSett
     notifySecurityAlerts: settings.notifySecurityAlerts,
   });
 
+  // Channel prefs (separate API)
+  const { data: channelPrefs } = useQuery<ChannelPrefs>({
+    queryKey: ["/api/notification-prefs"],
+    queryFn:  () => apiGet("/api/notification-prefs"),
+    enabled:  !!token,
+  });
+
+  const [channelForm, setChannelForm] = useState<ChannelPrefs>({
+    inApp: true, email: true, sms: false, smsPhone: "",
+  });
+
+  // Sync from server once loaded
+  const [channelInit, setChannelInit] = useState(false);
+  if (channelPrefs && !channelInit) {
+    setChannelForm({
+      inApp:    channelPrefs.inApp,
+      email:    channelPrefs.email,
+      sms:      channelPrefs.sms,
+      smsPhone: channelPrefs.smsPhone ?? "",
+    });
+    setChannelInit(true);
+  }
+
+  const patchChannelPrefs = useMutation({
+    mutationFn: (data: Partial<ChannelPrefs>) => apiPatch("/api/notification-prefs", data),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: ["/api/notification-prefs"] });
+      toast({ title: "Channel preferences saved" });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const [testSending, setTestSending] = useState(false);
+  async function handleTestSend() {
+    setTestSending(true);
+    try {
+      const res = await apiPost("/api/notification-prefs/test", {});
+      const channels: string[] = (res as any).channels ?? [];
+      toast({
+        title: "Test sent",
+        description: channels.length
+          ? `Fired on: ${channels.join(", ")}`
+          : "No channels enabled.",
+      });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setTestSending(false);
+    }
+  }
+
   const toggle = (key: keyof typeof form) => setForm(f => ({ ...f, [key]: !f[key] }));
 
   return (
-    <div className="space-y-6">
-      <NotifRow
-        id="emailNotifications"
-        label="Email Notifications"
-        description="Master toggle — enables all email notifications"
-        checked={form.emailNotifications}
-        onChange={() => toggle("emailNotifications")}
-        badge="Master"
-      />
-      <Separator className="opacity-10" />
-      <div className="space-y-4 pl-1">
-        {[
-          { key: "notifyBookingConfirm" as const,  label: "Booking Confirmation",  desc: "Receive confirmation when you book a session" },
-          { key: "notifyNewBooking" as const,       label: "New Booking Alert",     desc: "Notify admin when a new booking is submitted" },
-          { key: "notifyNewInquiry" as const,       label: "New Inquiry Alert",     desc: "Notify when a contact inquiry is received" },
-          { key: "notifyProjectUpdates" as const,   label: "Project Updates",       desc: "Get notified about portfolio project changes" },
-          { key: "notifyWeeklyDigest" as const,     label: "Weekly Digest",         desc: "Weekly summary of activity and analytics" },
-          { key: "notifySecurityAlerts" as const,   label: "Security Alerts",       desc: "Important alerts about account activity" },
-        ].map(item => (
-          <NotifRow key={item.key} id={item.key} label={item.label} description={item.desc}
-            checked={form[item.key]} onChange={() => toggle(item.key)}
-            disabled={!form.emailNotifications && (item.key as string) !== "emailNotifications"} />
-        ))}
+    <div className="space-y-8">
+
+      {/* ── Delivery channels ── */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Delivery Channels</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Choose how you receive notifications</p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleTestSend}
+            disabled={testSending}
+            className="gap-2 text-xs"
+            data-testid="btn-test-notifications"
+          >
+            {testSending ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Bell className="w-3 h-3" />}
+            Test Send
+          </Button>
+        </div>
+
+        <div className="rounded-lg border border-white/8 bg-white/2 divide-y divide-white/5">
+          {/* In-App */}
+          <div className="flex items-center justify-between px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">In-App</p>
+              <p className="text-xs text-muted-foreground">Bell icon + /notifications page</p>
+            </div>
+            <Switch
+              checked={channelForm.inApp}
+              onCheckedChange={v => setChannelForm(f => ({ ...f, inApp: v }))}
+              data-testid="switch-channel-inApp"
+            />
+          </div>
+
+          {/* Email */}
+          <div className="flex items-center justify-between px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">Email</p>
+              <p className="text-xs text-muted-foreground">Sent to your account email address</p>
+            </div>
+            <Switch
+              checked={channelForm.email}
+              onCheckedChange={v => setChannelForm(f => ({ ...f, email: v }))}
+              data-testid="switch-channel-email"
+            />
+          </div>
+
+          {/* SMS */}
+          <div className="px-4 py-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium flex items-center gap-2">
+                  SMS
+                  <Badge variant="secondary" className="text-xs">Twilio</Badge>
+                </p>
+                <p className="text-xs text-muted-foreground">Requires Twilio env vars + phone number</p>
+              </div>
+              <Switch
+                checked={channelForm.sms}
+                onCheckedChange={v => setChannelForm(f => ({ ...f, sms: v }))}
+                data-testid="switch-channel-sms"
+              />
+            </div>
+            {channelForm.sms && (
+              <Input
+                value={channelForm.smsPhone}
+                onChange={e => setChannelForm(f => ({ ...f, smsPhone: e.target.value }))}
+                placeholder="+15550001234 (E.164 format)"
+                className="bg-background/50 text-sm"
+                data-testid="input-sms-phone"
+              />
+            )}
+          </div>
+        </div>
+
+        <Button
+          size="sm"
+          onClick={() => patchChannelPrefs.mutate(channelForm)}
+          disabled={patchChannelPrefs.isPending}
+          className="gap-2"
+          data-testid="btn-save-channel-prefs"
+        >
+          {patchChannelPrefs.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+          Save Channels
+        </Button>
       </div>
-      <SaveButton onClick={() => onSave(form)} saving={saving} />
+
+      <Separator className="opacity-10" />
+
+      {/* ── Email alert types (existing) ── */}
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Email Alert Types</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Fine-tune which events trigger email notifications</p>
+        </div>
+        <NotifRow
+          id="emailNotifications"
+          label="Email Notifications"
+          description="Master toggle — enables all email notifications"
+          checked={form.emailNotifications}
+          onChange={() => toggle("emailNotifications")}
+          badge="Master"
+        />
+        <Separator className="opacity-10" />
+        <div className="space-y-4 pl-1">
+          {[
+            { key: "notifyBookingConfirm" as const,  label: "Booking Confirmation",  desc: "Receive confirmation when you book a session" },
+            { key: "notifyNewBooking" as const,       label: "New Booking Alert",     desc: "Notify admin when a new booking is submitted" },
+            { key: "notifyNewInquiry" as const,       label: "New Inquiry Alert",     desc: "Notify when a contact inquiry is received" },
+            { key: "notifyProjectUpdates" as const,   label: "Project Updates",       desc: "Get notified about portfolio project changes" },
+            { key: "notifyWeeklyDigest" as const,     label: "Weekly Digest",         desc: "Weekly summary of activity and analytics" },
+            { key: "notifySecurityAlerts" as const,   label: "Security Alerts",       desc: "Important alerts about account activity" },
+          ].map(item => (
+            <NotifRow key={item.key} id={item.key} label={item.label} description={item.desc}
+              checked={form[item.key]} onChange={() => toggle(item.key)}
+              disabled={!form.emailNotifications && (item.key as string) !== "emailNotifications"} />
+          ))}
+        </div>
+        <SaveButton onClick={() => onSave(form)} saving={saving} />
+      </div>
     </div>
   );
 }

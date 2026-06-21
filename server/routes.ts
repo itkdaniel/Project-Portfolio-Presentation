@@ -9,12 +9,14 @@ import { users } from "@shared/schema";
 import {
   insertProjectSchema, insertBookingSchema, insertInquirySchema, loginSchema,
   updateUserSettingsSchema, updateEmailConfigSchema, updateProfileSchema, updateResumeSchema, registerSchema,
+  insertScopeRequestSchema, updateScopeRequestSchema, updateNotifPrefsSchema,
 } from "@shared/schema";
 import { ZodError } from "zod";
 import { requireAuth, requireAdmin, generateToken, hashPassword, seedAdminUser, CORP_ROLE_SEED, DATA_RATING_SEED, type AuthenticatedRequest } from "./auth";
 import { seedTaxData } from "./tax-seed";
 import { initTaxScheduler } from "./tax-scheduler";
 import { loadCachedResults, runTests } from "./test-runner";
+import { sendNotification, notifyAllAdmins, testSendNotification } from "./notify";
 import {
   sendBookingConfirmationToUser,
   sendBookingNotificationToAdmin,
@@ -1180,6 +1182,136 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!res.headersSent) {
         return res.status(503).json({ message: `${name} service unavailable` });
       }
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // NOTIFICATIONS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // GET /api/notifications — list caller's notifications (newest first)
+  app.get("/api/notifications", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    const list = await storage.getNotifications(req.user!.id);
+    return res.json(list);
+  });
+
+  // PATCH /api/notifications/read-all — mark all as read
+  app.patch("/api/notifications/read-all", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    await storage.markAllNotificationsRead(req.user!.id);
+    return res.json({ message: "All marked read" });
+  });
+
+  // DELETE /api/notifications/clear-read — delete all read notifications
+  app.delete("/api/notifications/clear-read", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    await storage.clearReadNotifications(req.user!.id);
+    return res.json({ message: "Read notifications cleared" });
+  });
+
+  // PATCH /api/notifications/:id/read — mark one as read
+  app.patch("/api/notifications/:id/read", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    const n = await storage.markNotificationRead(req.params.id as string, req.user!.id);
+    if (!n) return res.status(404).json({ message: "Notification not found" });
+    return res.json(n);
+  });
+
+  // DELETE /api/notifications/:id — delete one notification
+  app.delete("/api/notifications/:id", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    const ok = await storage.deleteNotification(req.params.id as string, req.user!.id);
+    if (!ok) return res.status(404).json({ message: "Notification not found" });
+    return res.json({ message: "Deleted" });
+  });
+
+  // ── Notification prefs ────────────────────────────────────────────────────
+
+  // GET /api/notification-prefs — get caller's channel prefs (auto-create defaults)
+  app.get("/api/notification-prefs", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    let prefs = await storage.getNotifPrefs(req.user!.id);
+    if (!prefs) prefs = await storage.upsertNotifPrefs(req.user!.id, {});
+    return res.json(prefs);
+  });
+
+  // PATCH /api/notification-prefs — update channel prefs
+  app.patch("/api/notification-prefs", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const data = updateNotifPrefsSchema.parse(req.body);
+      const updated = await storage.upsertNotifPrefs(req.user!.id, data);
+      return res.json(updated);
+    } catch (e) {
+      const { status, body } = zodErr(e);
+      return res.status(status).json(body);
+    }
+  });
+
+  // POST /api/notification-prefs/test — fire a test notification on each enabled channel
+  app.post("/api/notification-prefs/test", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    const result = await testSendNotification(req.user!.id);
+    return res.json(result);
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SCOPE REQUESTS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // GET /api/scope-requests — admin: list all requests; user: list own requests
+  app.get("/api/scope-requests", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    if (req.user!.role === "admin") {
+      const list = await storage.getScopeRequests();
+      return res.json(list);
+    }
+    const list = await storage.getScopeRequestsByUser(req.user!.id);
+    return res.json(list);
+  });
+
+  // POST /api/scope-requests — user submits a new scope request
+  app.post("/api/scope-requests", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const data = insertScopeRequestSchema.parse({ ...req.body, userId: req.user!.id });
+      const created = await storage.createScopeRequest(data);
+
+      // Notify all admins
+      await notifyAllAdmins({
+        type:         "scope_request",
+        title:        "New Scope Request",
+        body:         `User ${req.user!.id} requested access to scope "${data.scopeName}".`,
+        link:         "/admin/approvals",
+        emailSubject: `[NexusConsult] Scope Request: ${data.scopeName}`,
+      });
+
+      // Notify the requesting user
+      await sendNotification(req.user!.id, {
+        type:  "info",
+        title: "Scope Request Submitted",
+        body:  `Your request for "${data.scopeName}" has been submitted and is pending review.`,
+        link:  "/notifications",
+      });
+
+      return res.status(201).json(created);
+    } catch (e) {
+      const { status, body } = zodErr(e);
+      return res.status(status).json(body);
+    }
+  });
+
+  // PATCH /api/scope-requests/:id/review — admin approves or denies
+  app.patch("/api/scope-requests/:id/review", requireAdmin as any, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const data = updateScopeRequestSchema.parse(req.body);
+      const updated = await storage.reviewScopeRequest(req.params.id as string, req.user!.id, data);
+      if (!updated) return res.status(404).json({ message: "Scope request not found" });
+
+      // Notify the user of the decision
+      await sendNotification(updated.userId, {
+        type:         data.status === "approved" ? "success" : "warning",
+        title:        `Scope Request ${data.status === "approved" ? "Approved" : "Denied"}`,
+        body:         `Your request for "${updated.scopeName}" was ${data.status}.${data.adminNote ? ` Note: ${data.adminNote}` : ""}`,
+        link:         "/notifications",
+        emailSubject: `[NexusConsult] Scope Request ${data.status === "approved" ? "Approved" : "Denied"}`,
+      });
+
+      return res.json(updated);
+    } catch (e) {
+      const { status, body } = zodErr(e);
+      return res.status(status).json(body);
     }
   });
 

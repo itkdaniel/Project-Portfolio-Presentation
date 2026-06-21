@@ -405,3 +405,62 @@ export const questionnaireSessions = pgTable("questionnaire_sessions", {
 export const insertSessionSchema = createInsertSchema(questionnaireSessions).omit({ id: true, startedAt: true, completedAt: true });
 export type InsertSession = z.infer<typeof insertSessionSchema>;
 export type QuestionnaireSession = typeof questionnaireSessions.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NOTIFICATION & SCOPE APPROVAL SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Notification channel preference per user ───────────────────────────────
+export const userNotificationPrefs = pgTable("user_notification_prefs", {
+  id:           serial("id").primaryKey(),
+  userId:       varchar("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  inApp:        boolean("in_app").notNull().default(true),
+  email:        boolean("email").notNull().default(true),
+  sms:          boolean("sms").notNull().default(false),
+  smsPhone:     text("sms_phone"),   // E.164, e.g. "+15550001234"
+  updatedAt:    timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertNotifPrefsSchema = createInsertSchema(userNotificationPrefs).omit({ id: true, updatedAt: true });
+export const updateNotifPrefsSchema = insertNotifPrefsSchema.partial().omit({ userId: true });
+export type InsertNotifPrefs = z.infer<typeof insertNotifPrefsSchema>;
+export type UpdateNotifPrefs = z.infer<typeof updateNotifPrefsSchema>;
+export type UserNotificationPrefs = typeof userNotificationPrefs.$inferSelect;
+
+// ── In-app notifications ───────────────────────────────────────────────────
+export const notifications = pgTable("notifications", {
+  id:        varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId:    varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type:      text("type").notNull().default("info"),   // info | success | warning | error | scope_request | scope_update
+  title:     text("title").notNull(),
+  body:      text("body").notNull(),
+  read:      boolean("read").notNull().default(false),
+  link:      text("link"),          // optional deep-link URL
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type Notification = typeof notifications.$inferSelect;
+
+// ── Scope requests ─────────────────────────────────────────────────────────
+export const scopeRequests = pgTable("scope_requests", {
+  id:           varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId:       varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  scopeName:    text("scope_name").notNull(),    // e.g. "uncensored_ai"
+  reason:       text("reason").notNull(),
+  status:       text("status").notNull().default("pending"),   // pending | approved | denied
+  adminNote:    text("admin_note"),
+  reviewedBy:   varchar("reviewed_by").references(() => users.id),
+  reviewedAt:   timestamp("reviewed_at"),
+  createdAt:    timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertScopeRequestSchema = createInsertSchema(scopeRequests).omit({ id: true, status: true, adminNote: true, reviewedBy: true, reviewedAt: true, createdAt: true });
+export const updateScopeRequestSchema = z.object({
+  status:    z.enum(["approved", "denied"]),
+  adminNote: z.string().max(500).optional(),
+});
+export type InsertScopeRequest = z.infer<typeof insertScopeRequestSchema>;
+export type UpdateScopeRequest = z.infer<typeof updateScopeRequestSchema>;
+export type ScopeRequest = typeof scopeRequests.$inferSelect;

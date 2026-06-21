@@ -14,6 +14,10 @@ import {
   type TaxPeriod, type FederalForm, type StateForm, type TaxBracket,
   type StandardDeduction, type SpecialTaxRate, type TaxQuestion,
   type FormRequirementRule, type QuestionnaireSession, type InsertSession,
+  notifications, userNotificationPrefs, scopeRequests,
+  type Notification, type InsertNotification,
+  type UserNotificationPrefs, type InsertNotifPrefs, type UpdateNotifPrefs,
+  type ScopeRequest, type InsertScopeRequest, type UpdateScopeRequest,
 } from "@shared/schema";
 import { encryptField, decryptField } from "./crypto";
 
@@ -64,6 +68,24 @@ export interface IStorage {
   getSession(id: string): Promise<QuestionnaireSession | undefined>;
   updateSession(id: string, answers: Record<string, unknown>, requiredForms?: unknown): Promise<QuestionnaireSession | undefined>;
   completeSession(id: string, requiredForms: unknown): Promise<QuestionnaireSession | undefined>;
+
+  // Notifications
+  getNotifications(userId: string): Promise<Notification[]>;
+  createNotification(data: InsertNotification): Promise<Notification>;
+  markNotificationRead(id: string, userId: string): Promise<Notification | undefined>;
+  markAllNotificationsRead(userId: string): Promise<void>;
+  deleteNotification(id: string, userId: string): Promise<boolean>;
+  clearReadNotifications(userId: string): Promise<void>;
+
+  // Notification prefs
+  getNotifPrefs(userId: string): Promise<UserNotificationPrefs | undefined>;
+  upsertNotifPrefs(userId: string, data: UpdateNotifPrefs): Promise<UserNotificationPrefs>;
+
+  // Scope requests
+  getScopeRequests(status?: string): Promise<(ScopeRequest & { username?: string | null; email?: string | null; fullName?: string | null })[]>;
+  getScopeRequestsByUser(userId: string): Promise<ScopeRequest[]>;
+  createScopeRequest(data: InsertScopeRequest): Promise<ScopeRequest>;
+  reviewScopeRequest(id: string, reviewedBy: string, data: UpdateScopeRequest): Promise<ScopeRequest | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -309,6 +331,126 @@ export class DatabaseStorage implements IStorage {
       .where(eq(questionnaireSessions.id, id))
       .returning();
     return s;
+  }
+
+  // ── Notifications ──────────────────────────────────────────────────────────
+
+  async getNotifications(userId: string): Promise<Notification[]> {
+    return db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt));
+  }
+
+  async createNotification(data: InsertNotification): Promise<Notification> {
+    const [n] = await db.insert(notifications).values(data).returning();
+    return n;
+  }
+
+  async markNotificationRead(id: string, userId: string): Promise<Notification | undefined> {
+    const [n] = await db
+      .update(notifications)
+      .set({ read: true })
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)))
+      .returning();
+    return n;
+  }
+
+  async markAllNotificationsRead(userId: string): Promise<void> {
+    await db
+      .update(notifications)
+      .set({ read: true })
+      .where(eq(notifications.userId, userId));
+  }
+
+  async deleteNotification(id: string, userId: string): Promise<boolean> {
+    const r = await db
+      .delete(notifications)
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)))
+      .returning();
+    return r.length > 0;
+  }
+
+  async clearReadNotifications(userId: string): Promise<void> {
+    await db
+      .delete(notifications)
+      .where(and(eq(notifications.userId, userId), eq(notifications.read, true)));
+  }
+
+  // ── Notification prefs ─────────────────────────────────────────────────────
+
+  async getNotifPrefs(userId: string): Promise<UserNotificationPrefs | undefined> {
+    const [p] = await db
+      .select()
+      .from(userNotificationPrefs)
+      .where(eq(userNotificationPrefs.userId, userId));
+    return p;
+  }
+
+  async upsertNotifPrefs(userId: string, data: UpdateNotifPrefs): Promise<UserNotificationPrefs> {
+    const existing = await this.getNotifPrefs(userId);
+    if (existing) {
+      const [updated] = await db
+        .update(userNotificationPrefs)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(userNotificationPrefs.userId, userId))
+        .returning();
+      return updated;
+    }
+    const [created] = await db
+      .insert(userNotificationPrefs)
+      .values({ userId, ...data })
+      .returning();
+    return created;
+  }
+
+  // ── Scope requests ─────────────────────────────────────────────────────────
+
+  async getScopeRequests(status?: string) {
+    const rows = await db
+      .select({
+        id:         scopeRequests.id,
+        userId:     scopeRequests.userId,
+        scopeName:  scopeRequests.scopeName,
+        reason:     scopeRequests.reason,
+        status:     scopeRequests.status,
+        adminNote:  scopeRequests.adminNote,
+        reviewedBy: scopeRequests.reviewedBy,
+        reviewedAt: scopeRequests.reviewedAt,
+        createdAt:  scopeRequests.createdAt,
+        username:   users.username,
+        email:      users.email,
+        fullName:   users.fullName,
+      })
+      .from(scopeRequests)
+      .leftJoin(users, eq(scopeRequests.userId, users.id))
+      .orderBy(desc(scopeRequests.createdAt));
+
+    if (status) return rows.filter(r => r.status === status);
+    return rows;
+  }
+
+  async getScopeRequestsByUser(userId: string): Promise<ScopeRequest[]> {
+    return db
+      .select()
+      .from(scopeRequests)
+      .where(eq(scopeRequests.userId, userId))
+      .orderBy(desc(scopeRequests.createdAt));
+  }
+
+  async createScopeRequest(data: InsertScopeRequest): Promise<ScopeRequest> {
+    const [r] = await db.insert(scopeRequests).values(data).returning();
+    return r;
+  }
+
+  async reviewScopeRequest(id: string, reviewedBy: string, data: UpdateScopeRequest): Promise<ScopeRequest | undefined> {
+    const [r] = await db
+      .update(scopeRequests)
+      .set({ status: data.status, adminNote: data.adminNote, reviewedBy, reviewedAt: new Date() })
+      .where(eq(scopeRequests.id, id))
+      .returning();
+    return r;
   }
 }
 
