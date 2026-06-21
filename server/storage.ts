@@ -113,6 +113,7 @@ export interface IStorage {
   // Granted scopes (AI access control)
   getGrantedScopes(userId: string): Promise<GrantedScope[]>;
   hasGrantedScope(userId: string, scope: string): Promise<boolean>;
+  getRevokedGrant(userId: string, scope: string): Promise<GrantedScope | null>;
   grantScope(data: InsertGrantedScope): Promise<GrantedScope>;
   revokeScope(userId: string, scope: string): Promise<boolean>;
   getAllGrantedScopes(): Promise<(GrantedScope & { username: string | null; email: string | null; fullName: string | null })[]>;
@@ -605,6 +606,22 @@ export class DatabaseStorage implements IStorage {
       )
       .limit(1);
     return !!row;
+  }
+
+  async getRevokedGrant(userId: string, scope: string): Promise<GrantedScope | null> {
+    const [row] = await db
+      .select()
+      .from(grantedScopes)
+      .where(
+        and(
+          eq(grantedScopes.userId, userId),
+          eq(grantedScopes.scope, scope),
+          sql`revoked_at IS NOT NULL`,
+        ),
+      )
+      .orderBy(sql`revoked_at DESC`)
+      .limit(1);
+    return row ?? null;
   }
 
   async grantScope(data: InsertGrantedScope): Promise<GrantedScope> {

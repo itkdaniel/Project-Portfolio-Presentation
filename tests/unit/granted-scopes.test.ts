@@ -10,6 +10,8 @@
  *  - Storage-level unit tests for grantScope / revokeScope / hasGrantedScope
  *    called directly against the database (active, revoked, expired cases)
  *  - Deduplication migration (scripts/deduplicate-granted-scopes.ts)
+ *  - Reactivation flag: PATCH approve returns reactivated:true when a prior
+ *    revoked grant exists for the same user+scope
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createHmac } from "crypto";
@@ -587,5 +589,100 @@ describe("deduplicateGrantedScopes migration", () => {
     // hasGrantedScope must return false after revocation.
     const has = await storage.hasGrantedScope(userId, scopeName);
     expect(has).toBe(false);
+  });
+});
+
+// ── 9. Reactivation flag — re-approving a previously revoked scope ────────────
+
+describe("Reactivation flag — PATCH approve returns reactivated:true for a prior revocation", () => {
+  const reactivationScope = `reactivation_test_${Date.now()}`;
+  let scopeRequestId1 = "";
+  let scopeRequestId2 = "";
+
+  it("POST /api/scope-requests — user submits first scope request", async () => {
+    const { status, body } = await post(
+      "/api/scope-requests",
+      { scopeName: reactivationScope, reason: "Initial access request" },
+      userToken,
+    );
+    expect(status).toBe(201);
+    scopeRequestId1 = body.id;
+  });
+
+  it("PATCH approve — admin approves first request; reactivated is false (no prior revocation)", async () => {
+    const { status, body } = await patch(
+      `/api/scope-requests/${scopeRequestId1}`,
+      { status: "approved", adminNote: "First approval." },
+      adminToken,
+    );
+    expect(status).toBe(200);
+    expect(body.reactivated).toBe(false);
+  });
+
+  it("revoke via storage — admin revokes the user's scope", async () => {
+    const revoked = await storage.revokeScope(userId, reactivationScope);
+    expect(revoked).toBe(true);
+
+    // Confirm the scope is no longer active
+    const hasScope = await storage.hasGrantedScope(userId, reactivationScope);
+    expect(hasScope).toBe(false);
+  });
+
+  it("storage.getRevokedGrant — returns the revoked row for the same user+scope", async () => {
+    const row = await storage.getRevokedGrant(userId, reactivationScope);
+    expect(row).not.toBeNull();
+    expect(row!.userId).toBe(userId);
+    expect(row!.scope).toBe(reactivationScope);
+    expect(row!.revokedAt).not.toBeNull();
+  });
+
+  it("POST /api/scope-requests — user submits a second request for the same scope", async () => {
+    const { status, body } = await post(
+      "/api/scope-requests",
+      { scopeName: reactivationScope, reason: "Need access again after revocation" },
+      userToken,
+    );
+    expect(status).toBe(201);
+    scopeRequestId2 = body.id;
+  });
+
+  it("PATCH approve — admin approves second request; reactivated is true (prior revocation exists)", async () => {
+    const { status, body } = await patch(
+      `/api/scope-requests/${scopeRequestId2}`,
+      { status: "approved", adminNote: "Re-approved after prior revocation." },
+      adminToken,
+    );
+    expect(status).toBe(200);
+    expect(body.reactivated).toBe(true);
+  });
+
+  it("scope is active again after re-approval", async () => {
+    const hasScope = await storage.hasGrantedScope(userId, reactivationScope);
+    expect(hasScope).toBe(true);
+  });
+
+  it("PATCH deny — reactivated flag is false (not applicable to denials)", async () => {
+    // Create a fresh request and revoke a fresh scope first so we can test denial path
+    const denialScope = `reactivation_denial_${Date.now()}`;
+
+    // Grant and revoke the scope at storage level
+    await storage.grantScope({ userId, scope: denialScope, grantedBy: null });
+    await storage.revokeScope(userId, denialScope);
+
+    // Submit a new request
+    const { body: reqBody } = await post(
+      "/api/scope-requests",
+      { scopeName: denialScope, reason: "Testing denial path" },
+      userToken,
+    );
+
+    // Admin denies — reactivated should be false since code only checks on approval
+    const { status, body } = await patch(
+      `/api/scope-requests/${reqBody.id}`,
+      { status: "denied", adminNote: "Denied." },
+      adminToken,
+    );
+    expect(status).toBe(200);
+    expect(body.reactivated).toBe(false);
   });
 });

@@ -1378,7 +1378,12 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
       const updated = await storage.reviewScopeRequest(req.params.id as string, req.user!.id, data);
       if (!updated) return res.status(404).json({ message: "Scope request not found" });
 
+      let reactivated = false;
+
       if (data.status === "approved") {
+        const priorRevoked = await storage.getRevokedGrant(updated.userId, updated.scopeName);
+        if (priorRevoked) reactivated = true;
+
         const expiresAt = data.expiresInDays
           ? new Date(Date.now() + data.expiresInDays * 24 * 60 * 60 * 1000)
           : null;
@@ -1399,7 +1404,7 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
         emailSubject: `[NexusConsult] Scope Request ${data.status === "approved" ? "Approved" : "Denied"}`,
       });
 
-      return res.json(updated);
+      return res.json({ ...updated, reactivated });
     } catch (e) {
       const { status, body } = zodErr(e);
       return res.status(status).json(body);
