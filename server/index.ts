@@ -4,6 +4,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { join } from "path";
 import { mkdirSync } from "fs";
+import { validateEncryptionKey } from "./crypto";
 
 const app = express();
 const httpServer = createServer(app);
@@ -62,7 +63,10 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Serve uploaded resume files
+  // Fail fast if encryption key is absent or malformed
+  validateEncryptionKey();
+
+  // Serve uploaded files (resumes, avatars)
   const uploadsDir = join(process.cwd(), "uploads");
   try { mkdirSync(uploadsDir, { recursive: true }); } catch {}
   app.use("/uploads", express.static(uploadsDir));

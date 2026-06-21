@@ -2,7 +2,7 @@
  * server/crypto.ts
  * AES-256-CBC field-level encryption for sensitive user data (mobile, location).
  * Key is read from FIELD_ENCRYPTION_KEY env var (64-char hex = 32 bytes).
- * App will REFUSE to start if the key is missing or malformed — no plaintext fallback.
+ * Call validateEncryptionKey() at startup — app will exit if key is missing or malformed.
  */
 
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
@@ -19,6 +19,14 @@ function getKey(): Buffer {
     );
   }
   return Buffer.from(hex, "hex");
+}
+
+/**
+ * Call once at server startup.
+ * Throws (and exits) if FIELD_ENCRYPTION_KEY is absent or malformed.
+ */
+export function validateEncryptionKey(): void {
+  getKey(); // throws if invalid
 }
 
 /**

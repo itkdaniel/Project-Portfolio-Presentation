@@ -29,15 +29,34 @@ import { join } from "path";
 
 // ── Upload directory setup ─────────────────────────────────────────────────
 const UPLOADS_DIR = join(process.cwd(), "uploads", "resumes");
+const AVATARS_DIR = join(process.cwd(), "uploads", "avatars");
 try { mkdirSync(UPLOADS_DIR, { recursive: true }); } catch {}
+try { mkdirSync(AVATARS_DIR, { recursive: true }); } catch {}
 
 const resumeUpload = multer({
-  dest: UPLOADS_DIR,
+  storage: multer.diskStorage({
+    destination: UPLOADS_DIR,
+    filename: (_req, _file, cb) => cb(null, `${uuidv4()}.pdf`),
+  }),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
   fileFilter: (_req, file, cb) => {
     const allowed = ["application/pdf", "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
     cb(null, allowed.includes(file.mimetype));
+  },
+});
+
+const avatarUpload = multer({
+  storage: multer.diskStorage({
+    destination: AVATARS_DIR,
+    filename: (_req, file, cb) => {
+      const ext = file.mimetype.split("/")[1] ?? "jpg";
+      cb(null, `${uuidv4()}.${ext}`);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: (_req, file, cb) => {
+    cb(null, file.mimetype.startsWith("image/"));
   },
 });
 
@@ -230,6 +249,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { status, body } = zodErr(e);
       return res.status(status).json(body);
     }
+  });
+
+  // POST /api/users/avatar — upload an avatar image (JPEG, PNG, WebP, GIF)
+  app.post("/api/users/avatar", requireAuth as any, avatarUpload.single("avatar"), async (req: AuthenticatedRequest, res: Response) => {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded or unsupported image type" });
+    }
+    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    const updated = await storage.updateUserProfile(req.user!.id, { profilePictureUrl: avatarUrl });
+    if (!updated) return res.status(404).json({ message: "User not found" });
+    return res.json({ avatarUrl });
   });
 
   // ── Resumé ───────────────────────────────────────────────────────────────

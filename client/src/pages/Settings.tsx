@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
@@ -15,7 +15,7 @@ import {
   User, Bell, Palette, Shield, Mail, Plug,
   Github, Linkedin, Globe, Save, RefreshCw,
   CheckCircle, AlertCircle, Eye, EyeOff,
-  ChevronRight, Settings as SettingsIcon, X
+  ChevronRight, Settings as SettingsIcon, X, Upload, Trash2
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -330,6 +330,8 @@ function ProfileSection({ settings, onSave, saving, isAuthenticated }: {
   const token = typeof localStorage !== "undefined" ? localStorage.getItem("nexus_token") : null;
   const { toast } = useToast();
   const { me, save } = useExtendedProfile(token);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   const defaultSettings: UserSettingsData = {
     displayName: "", bio: "", avatarUrl: "", githubUrl: "", linkedinUrl: "", websiteUrl: "",
@@ -396,6 +398,36 @@ function ProfileSection({ settings, onSave, saving, isAuthenticated }: {
     }
   }
 
+  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("avatar", file);
+      const res = await fetch("/api/users/avatar", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const { avatarUrl } = await res.json();
+      setProfileForm(f => ({ ...f, profilePictureUrl: avatarUrl }));
+      setProfileDirty(true);
+      toast({ title: "Avatar uploaded", description: "Your profile picture has been updated." });
+    } catch (e: any) {
+      toast({ title: "Upload failed", description: e.message, variant: "destructive" });
+    } finally {
+      setAvatarUploading(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
+    }
+  }
+
+  function handleAvatarRemove() {
+    setProfileForm(f => ({ ...f, profilePictureUrl: "" }));
+    setProfileDirty(true);
+  }
+
   const displayName = profileForm.fullName || me?.username || "You";
   const initials = displayName.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2);
 
@@ -416,27 +448,70 @@ function ProfileSection({ settings, onSave, saving, isAuthenticated }: {
 
         {/* Avatar + email row */}
         <div className="flex items-start gap-4">
-          {profileForm.profilePictureUrl ? (
-            <img src={profileForm.profilePictureUrl} alt="Avatar"
-              className="w-16 h-16 rounded-full object-cover border-2 border-primary/20 shrink-0"
-              onError={e => (e.currentTarget.style.display = "none")} />
-          ) : (
-            <div className="w-16 h-16 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center shrink-0">
-              <span className="text-xl font-bold text-primary">{initials}</span>
-            </div>
-          )}
+          {/* Avatar preview */}
+          <div className="shrink-0 relative group">
+            {profileForm.profilePictureUrl ? (
+              <img src={profileForm.profilePictureUrl} alt="Avatar"
+                className="w-20 h-20 rounded-full object-cover border-2 border-primary/20"
+                onError={e => (e.currentTarget.style.display = "none")} />
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center">
+                <span className="text-2xl font-bold text-primary">{initials}</span>
+              </div>
+            )}
+          </div>
+
           <div className="flex-1 space-y-3">
             {/* Email — read-only display */}
             {me?.email && (
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 <Label className="text-xs text-muted-foreground">Email (account)</Label>
                 <p className="text-sm font-medium text-foreground" data-testid="display-email">{me.email}</p>
               </div>
             )}
-            <div className="space-y-1.5">
-              <Label htmlFor="profilePictureUrl">Profile Picture URL</Label>
+
+            {/* Avatar upload / URL */}
+            <div className="space-y-2">
+              <Label>Profile Picture</Label>
+              <div className="flex flex-wrap gap-2">
+                {/* Hidden file input */}
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  data-testid="input-avatar-file"
+                  onChange={handleAvatarUpload}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={avatarUploading || !isAuthenticated}
+                  data-testid="btn-upload-avatar"
+                  className="gap-2"
+                >
+                  {avatarUploading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  {avatarUploading ? "Uploading…" : "Upload Image"}
+                </Button>
+                {profileForm.profilePictureUrl && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAvatarRemove}
+                    disabled={!isAuthenticated}
+                    data-testid="btn-remove-avatar"
+                    className="gap-2 text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Remove
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">Or enter a URL directly:</p>
               <Input id="profilePictureUrl" data-testid="input-profilePictureUrl" value={profileForm.profilePictureUrl ?? ""}
-                onChange={pf("profilePictureUrl")} placeholder="https://…" className="bg-background/50" />
+                onChange={pf("profilePictureUrl")} placeholder="https://example.com/photo.jpg" className="bg-background/50" />
             </div>
           </div>
         </div>
