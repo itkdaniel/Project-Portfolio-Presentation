@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en" style="height:100%">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NexusGraph — Knowledge Graph</title>
+    <meta name="description" content="Interactive force-directed knowledge graph of entities and relationships extracted by NexusScraper." />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body, #root { height: 100%; overflow: hidden; }
+      body { background: #0f0f18; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: #1e1e2e; }
+      ::-webkit-scrollbar-thumb { background: #3b4278; border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

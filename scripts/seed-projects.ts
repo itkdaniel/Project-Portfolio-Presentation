@@ -222,6 +222,37 @@ GET  /openapi.json                — OpenAPI specification`,
     published: true,
     featured: true,
   },
+  {
+    name: "Nexus Graph — Knowledge Graph + Visualization",
+    description: "Interactive force-directed knowledge graph with Louvain community detection, ego-subgraph queries, and a React canvas UI backed by the NexusScraper entity database.",
+    longDescription: `A standalone FastAPI microservice that exposes the entity-relationship data produced by NexusScraper
+through a graph API, and serves an interactive force-directed knowledge graph visualization.
+Users can search entities, click nodes to inspect details and their connections, and navigate the graph.
+Louvain community detection (via python-igraph) groups nodes into clusters rendered as convex hull overlays.
+The React frontend uses react-force-graph-2d (WebGL) for smooth canvas rendering.
+Node colours map to entity types; node size scales with relation count.
+Integrated with the NexusConsult gateway at /api/apps/graph/proxy/* for transparent proxying.
+Features: 10-min in-process cluster cache, ego-subgraph radius-2 queries, manual relation creation API,
+paginated node/edge loading, search highlight, detail drawer with neighbour navigation, and a color legend.`,
+    type: "Microservice",
+    tags: ["FastAPI", "Python", "igraph", "Louvain", "React", "WebGL", "PostgreSQL", "Docker", "TypeScript"],
+    githubUrl: "https://github.com/itkdaniel/nexus-graph",
+    runCommand: "docker build -t nexus-graph . && docker run -p 8006:8006 nexus-graph",
+    testCommand: "pytest tests/ -v --cov=app",
+    usageInstructions: `GET  /health                         — health check
+GET  /v1/graph/nodes               — paginated entity nodes (search/type filter)
+GET  /v1/graph/nodes/:id           — single node detail + neighbor list
+GET  /v1/graph/edges?ids=...       — edges between given node IDs
+GET  /v1/graph/clusters            — Louvain cluster assignments (10 min cache)
+GET  /v1/graph/subgraph/:id        — ego-graph radius 2 around a node
+POST /v1/graph/relations           — create manual relation (admin)
+GET  /openapi.json                 — OpenAPI specification`,
+    demoApiEndpoint: "/api/apps/graph/proxy/health",
+    sandboxUrl: "http://localhost:8006",
+    status: "active",
+    published: true,
+    featured: true,
+  },
 ];
 
 // Sub-app project names for upsert identification
@@ -231,6 +262,7 @@ const SUB_APP_NAMES = new Set([
   "Nexus Search — BM25 Full-Text Engine",
   "Nexus AI — Transformer Inference Service",
   "Nexus Scraper — Web Scraper + Entity Database",
+  "Nexus Graph — Knowledge Graph + Visualization",
 ]);
 
 async function seed() {

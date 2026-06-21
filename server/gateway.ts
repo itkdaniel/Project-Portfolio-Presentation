@@ -167,6 +167,30 @@ export function buildRegistry(): SubAppInfo[] {
       ],
       githubUrl: "https://github.com/itkdaniel/nexus-scraper",
     },
+    {
+      name: "graph",
+      label: "Nexus Graph",
+      description:
+        "Knowledge graph API — interactive force-directed entity graph with Louvain community detection, ego-subgraph queries, and a React canvas UI.",
+      baseUrl: resolveUrl("SUB_APP_GRAPH_URL", "NEXUS_GRAPH_URL", 8006),
+      port: 8006,
+      healthPath: "/health",
+      openApiPath: "/openapi.json",
+      tags: ["FastAPI", "Python", "igraph", "Louvain", "React", "D3", "PostgreSQL"],
+      matchKeys: ["graph", "knowledge", "cluster", "node", "edge", "relation", "louvain", "visualize"],
+      endpoints: [
+        { method: "GET",  path: "/health",                  description: "Health check",               auth: false },
+        { method: "GET",  path: "/info",                    description: "Service info + endpoint list",auth: false },
+        { method: "GET",  path: "/openapi.json",            description: "OpenAPI spec",               auth: false },
+        { method: "GET",  path: "/v1/graph/nodes",          description: "Paginated entity nodes",     auth: false },
+        { method: "GET",  path: "/v1/graph/nodes/:id",      description: "Single node detail + neighbors", auth: false },
+        { method: "GET",  path: "/v1/graph/edges",          description: "Edges between node IDs",     auth: false },
+        { method: "GET",  path: "/v1/graph/clusters",       description: "Louvain community clusters", auth: false },
+        { method: "GET",  path: "/v1/graph/subgraph/:id",   description: "Ego-graph radius 2",         auth: false },
+        { method: "POST", path: "/v1/graph/relations",      description: "Create manual relation",     auth: true  },
+      ],
+      githubUrl: "https://github.com/itkdaniel/nexus-graph",
+    },
   ];
 }
 
