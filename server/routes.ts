@@ -1390,5 +1390,152 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
     }
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // NEXUS SCRAPER — Entity Database + Scrape Jobs
+  // ══════════════════════════════════════════════════════════════════════════
+  //
+  // When NEXUS_SCRAPER_URL is set, all /api/scrape/* and /api/entities/* requests
+  // are transparently proxied to the standalone nexus-scraper microservice.
+  // When absent, the monolith storage layer is used as a direct fallback.
+
+  const NEXUS_SCRAPER_URL = (process.env.SUB_APP_SCRAPER_URL || process.env.NEXUS_SCRAPER_URL || "").replace(/\/$/, "");
+
+  async function proxyToScraperService(
+    method: string,
+    path: string,
+    req: Request,
+    body?: unknown,
+  ): Promise<{ status: number; data: unknown }> {
+    const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+    const url = `${NEXUS_SCRAPER_URL}${path}${qs}`;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (req.headers.authorization) headers["Authorization"] = req.headers.authorization;
+    const init: RequestInit = { method, headers };
+    if (body !== undefined) init.body = JSON.stringify(body);
+    const resp = await fetch(url, { ...init, signal: AbortSignal.timeout(15000) });
+    let data: unknown;
+    try { data = await resp.json(); } catch { data = null; }
+    return { status: resp.status, data };
+  }
+
+  // ── Entity Types ──────────────────────────────────────────────────────────
+
+  // GET /api/entity-types — list all classification types
+  app.get("/api/entity-types", async (req, res) => {
+    if (NEXUS_SCRAPER_URL) {
+      const { status, data } = await proxyToScraperService("GET", "/v1/entity-types", req);
+      return res.status(status).json(data);
+    }
+    const types = await storage.getEntityTypes();
+    return res.json(types);
+  });
+
+  // ── Entities ──────────────────────────────────────────────────────────────
+
+  // GET /api/entities?limit=&offset=&type=&source= — paginated entity list
+  app.get("/api/entities", async (req, res) => {
+    if (NEXUS_SCRAPER_URL) {
+      const { status, data } = await proxyToScraperService("GET", "/v1/entities", req);
+      return res.status(status).json(data);
+    }
+    const limit  = Math.min(parseInt(req.query.limit  as string || "20"), 100);
+    const offset = parseInt(req.query.offset as string || "0");
+    const type   = req.query.type   as string | undefined;
+    const source = req.query.source as string | undefined;
+    const result = await storage.getEntities({ limit, offset, type, source });
+    return res.json({ total: result.total, limit, offset, items: result.items });
+  });
+
+  // GET /api/entities/:id — single entity with relations
+  app.get("/api/entities/:id", async (req, res) => {
+    if (NEXUS_SCRAPER_URL) {
+      const { status, data } = await proxyToScraperService("GET", `/v1/entities/${req.params.id}`, req);
+      return res.status(status).json(data);
+    }
+    const entity = await storage.getEntity(req.params.id as string);
+    if (!entity) return res.status(404).json({ message: "Entity not found" });
+    return res.json(entity);
+  });
+
+  // ── Scrape Jobs ───────────────────────────────────────────────────────────
+
+  // GET /api/scrape/jobs — paginated list of scrape jobs
+  app.get("/api/scrape/jobs", async (req, res) => {
+    if (NEXUS_SCRAPER_URL) {
+      const { status, data } = await proxyToScraperService("GET", "/v1/scrape/jobs", req);
+      return res.status(status).json(data);
+    }
+    const limit  = Math.min(parseInt(req.query.limit  as string || "20"), 100);
+    const offset = parseInt(req.query.offset as string || "0");
+    const result = await storage.getScrapeJobs({ limit, offset });
+    return res.json({ total: result.total, limit, offset, items: result.items });
+  });
+
+  // GET /api/scrape/jobs/:id — single job detail
+  app.get("/api/scrape/jobs/:id", async (req, res) => {
+    if (NEXUS_SCRAPER_URL) {
+      const { status, data } = await proxyToScraperService("GET", `/v1/scrape/jobs/${req.params.id}`, req);
+      return res.status(status).json(data);
+    }
+    const job = await storage.getScrapeJob(req.params.id as string);
+    if (!job) return res.status(404).json({ message: "Scrape job not found" });
+    const entities = await storage.getEntities({ limit: 10, offset: 0 });
+    return res.json({ ...job, entities: entities.items.slice(0, 5) });
+  });
+
+  // POST /api/scrape/url — scrape a URL; proxy or create a pending job record
+  app.post("/api/scrape/url", async (req, res) => {
+    if (NEXUS_SCRAPER_URL) {
+      const { status, data } = await proxyToScraperService("POST", "/v1/scrape/url", req, req.body);
+      return res.status(status).json(data);
+    }
+    const { url: targetUrl, source_label } = req.body;
+    if (!targetUrl || typeof targetUrl !== "string") {
+      return res.status(400).json({ message: "url is required" });
+    }
+    try { new URL(targetUrl); } catch {
+      return res.status(400).json({ message: "Invalid URL" });
+    }
+    const job = await storage.createScrapeJob({ targetUrl, status: "pending", entityCount: 0 });
+    return res.status(202).json({
+      job_id: job.id,
+      status: "pending",
+      message: "Scrape job queued. Start NEXUS_SCRAPER_URL service to process.",
+    });
+  });
+
+  // POST /api/scrape/onion — scrape a .onion URL via Tor; proxy or fallback
+  app.post("/api/scrape/onion", async (req, res) => {
+    if (NEXUS_SCRAPER_URL) {
+      const { status, data } = await proxyToScraperService("POST", "/v1/scrape/onion", req, req.body);
+      return res.status(status).json(data);
+    }
+    const { url: targetUrl } = req.body;
+    if (!targetUrl || typeof targetUrl !== "string") {
+      return res.status(400).json({ message: "url is required" });
+    }
+    if (!targetUrl.includes(".onion")) {
+      return res.status(400).json({ message: "URL must be a .onion address" });
+    }
+    const job = await storage.createScrapeJob({ targetUrl, status: "pending", entityCount: 0 });
+    return res.status(202).json({
+      job_id: job.id,
+      status: "pending",
+      message: "Onion scrape job queued. Start NEXUS_SCRAPER_URL service with Tor to process.",
+    });
+  });
+
+  // POST /api/scrape/trending — trigger a trending scrape run
+  app.post("/api/scrape/trending", async (req, res) => {
+    if (NEXUS_SCRAPER_URL) {
+      const { status, data } = await proxyToScraperService("POST", "/v1/scrape/trending", req, {});
+      return res.status(status).json(data);
+    }
+    return res.status(202).json({
+      message: "Trending scrape queued. Start NEXUS_SCRAPER_URL service to process.",
+      sources: ["Hacker News top-30", "Reddit /r/technology top-20"],
+    });
+  });
+
   return httpServer;
 }

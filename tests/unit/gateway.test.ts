@@ -19,16 +19,17 @@ import {
 // ── Registry ─────────────────────────────────────────────────────────────────
 
 describe("buildRegistry()", () => {
-  it("returns exactly 4 sub-apps", () => {
-    expect(buildRegistry()).toHaveLength(4);
+  it("returns exactly 5 sub-apps", () => {
+    expect(buildRegistry()).toHaveLength(5);
   });
 
-  it("includes booking, tax, search, and ai entries", () => {
+  it("includes booking, tax, search, ai, and scraper entries", () => {
     const names = buildRegistry().map((a) => a.name);
     expect(names).toContain("booking");
     expect(names).toContain("tax");
     expect(names).toContain("search");
     expect(names).toContain("ai");
+    expect(names).toContain("scraper");
   });
 
   it("each entry has required fields", () => {
@@ -95,13 +96,18 @@ describe("buildRegistry()", () => {
   });
 
   it("falls back to default localhost ports when no env vars set", () => {
-    const envKeys = ["SUB_APP_BOOKING_URL","NEXUS_BOOKING_URL","SUB_APP_TAX_URL","NEXUS_TAX_URL",
-                     "SUB_APP_SEARCH_URL","NEXUS_SEARCH_URL","SUB_APP_AI_URL","NEXUS_AI_URL"];
+    const envKeys = [
+      "SUB_APP_BOOKING_URL","NEXUS_BOOKING_URL","SUB_APP_TAX_URL","NEXUS_TAX_URL",
+      "SUB_APP_SEARCH_URL","NEXUS_SEARCH_URL","SUB_APP_AI_URL","NEXUS_AI_URL",
+      "SUB_APP_SCRAPER_URL","NEXUS_SCRAPER_URL",
+    ];
     const saved: Record<string, string | undefined> = {};
     envKeys.forEach((k) => { saved[k] = process.env[k]; delete process.env[k]; });
 
     const reg = buildRegistry();
-    const portMap: Record<string, number> = { booking: 8003, tax: 8004, search: 8002, ai: 8001 };
+    const portMap: Record<string, number> = {
+      booking: 8003, tax: 8004, search: 8002, ai: 8001, scraper: 8005,
+    };
     for (const app of reg) {
       expect(app.baseUrl).toBe(`http://localhost:${portMap[app.name]}`);
     }
@@ -197,15 +203,16 @@ describe("checkAllHealth()", () => {
     vi.restoreAllMocks();
   });
 
-  it("always returns 4 results regardless of upstream failures", async () => {
+  it("always returns 5 results regardless of upstream failures", async () => {
     mockFetch
       .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) })
       .mockRejectedValueOnce(new Error("down"))
       .mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) })
-      .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) });
+      .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) })
+      .mockRejectedValueOnce(new Error("down"));
 
     const results = await checkAllHealth();
-    expect(results).toHaveLength(4);
+    expect(results).toHaveLength(5);
   });
 
   it("runs health checks in parallel (Promise.allSettled)", async () => {
@@ -215,7 +222,7 @@ describe("checkAllHealth()", () => {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
     });
     await checkAllHealth();
-    expect(order.length).toBe(4);
+    expect(order.length).toBe(5);
   });
 
   it("mixed results: healthy + unhealthy in same batch", async () => {
@@ -223,11 +230,12 @@ describe("checkAllHealth()", () => {
       .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) })
       .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) })
       .mockRejectedValueOnce(new Error("timeout"))
+      .mockRejectedValueOnce(new Error("timeout"))
       .mockRejectedValueOnce(new Error("timeout"));
 
     const results = await checkAllHealth();
     expect(results.filter((r) => r.status === "healthy")).toHaveLength(2);
-    expect(results.filter((r) => r.status === "unhealthy")).toHaveLength(2);
+    expect(results.filter((r) => r.status === "unhealthy")).toHaveLength(3);
   });
 
   it("each result includes endpoints array", async () => {
@@ -356,11 +364,11 @@ afterAll(async () => {
 });
 
 describe("GET /api/apps", () => {
-  it("returns 200 and an array of 4 sub-apps", async () => {
+  it("returns 200 and an array of 5 sub-apps", async () => {
     const res = await request.get("/api/apps");
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBe(4);
+    expect(res.body.length).toBe(5);
   });
 
   it("each entry has name, label, description, baseUrl, endpoints, status", async () => {
@@ -375,22 +383,23 @@ describe("GET /api/apps", () => {
     }
   });
 
-  it("includes all four app names", async () => {
+  it("includes all five app names", async () => {
     const res = await request.get("/api/apps");
     const names = res.body.map((a: { name: string }) => a.name);
     expect(names).toContain("booking");
     expect(names).toContain("tax");
     expect(names).toContain("search");
     expect(names).toContain("ai");
+    expect(names).toContain("scraper");
   });
 });
 
 describe("GET /api/apps/health", () => {
-  it("returns 200 and 4 health-status objects", async () => {
+  it("returns 200 and 5 health-status objects", async () => {
     const res = await request.get("/api/apps/health");
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBe(4);
+    expect(res.body.length).toBe(5);
   });
 
   it("each entry has status field", async () => {

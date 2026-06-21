@@ -1,4 +1,4 @@
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, projects, bookings, inquiries, userSettings, emailConfig, resumes,
@@ -18,6 +18,12 @@ import {
   type Notification, type InsertNotification,
   type UserNotificationPrefs, type InsertNotifPrefs, type UpdateNotifPrefs,
   type ScopeRequest, type InsertScopeRequest, type UpdateScopeRequest,
+  entityTypes, entities, entityRelations, scrapeJobs, scrapeSources,
+  type EntityType, type InsertEntityType,
+  type Entity, type InsertEntity,
+  type EntityRelation, type InsertEntityRelation,
+  type ScrapeJob, type InsertScrapeJob,
+  type ScrapeSource, type InsertScrapeSource,
 } from "@shared/schema";
 import { encryptField, decryptField } from "./crypto";
 
@@ -87,6 +93,20 @@ export interface IStorage {
   getScopeRequest(id: string): Promise<ScopeRequest | undefined>;
   createScopeRequest(data: InsertScopeRequest): Promise<ScopeRequest>;
   reviewScopeRequest(id: string, reviewedBy: string | null, data: UpdateScopeRequest): Promise<ScopeRequest | undefined>;
+
+  // Entity database (NexusScraper)
+  getEntityTypes(): Promise<EntityType[]>;
+  getEntities(opts?: { limit?: number; offset?: number; type?: string; source?: string }): Promise<{ total: number; items: Entity[] }>;
+  getEntity(id: string): Promise<(Entity & { relations: EntityRelation[] }) | undefined>;
+  createEntity(data: InsertEntity): Promise<Entity>;
+  getEntityRelations(fromEntityId: string): Promise<EntityRelation[]>;
+  createEntityRelation(data: InsertEntityRelation): Promise<EntityRelation>;
+  getScrapeJobs(opts?: { limit?: number; offset?: number }): Promise<{ total: number; items: ScrapeJob[] }>;
+  getScrapeJob(id: string): Promise<ScrapeJob | undefined>;
+  createScrapeJob(data: InsertScrapeJob): Promise<ScrapeJob>;
+  updateScrapeJob(id: string, data: Partial<InsertScrapeJob>): Promise<ScrapeJob | undefined>;
+  getScrapeSources(): Promise<ScrapeSource[]>;
+  createScrapeSource(data: InsertScrapeSource): Promise<ScrapeSource>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -457,6 +477,92 @@ export class DatabaseStorage implements IStorage {
       .where(eq(scopeRequests.id, id))
       .returning();
     return r;
+  }
+
+  // ── Entity Database (NexusScraper) ─────────────────────────────────────────
+
+  async getEntityTypes(): Promise<EntityType[]> {
+    return db.select().from(entityTypes).orderBy(entityTypes.name);
+  }
+
+  async getEntities(opts: { limit?: number; offset?: number; type?: string; source?: string } = {}): Promise<{ total: number; items: Entity[] }> {
+    const { limit = 20, offset = 0, type, source } = opts;
+
+    const conditions = [];
+    if (type)   conditions.push(eq(entities.type, type));
+    if (source) conditions.push(eq(entities.sourceLabel, source));
+
+    const baseQuery = conditions.length > 0
+      ? db.select().from(entities).where(and(...conditions))
+      : db.select().from(entities);
+
+    const countQuery = conditions.length > 0
+      ? db.select({ count: sql<number>`count(*)` }).from(entities).where(and(...conditions))
+      : db.select({ count: sql<number>`count(*)` }).from(entities);
+
+    const [countResult, items] = await Promise.all([
+      countQuery,
+      (conditions.length > 0
+        ? db.select().from(entities).where(and(...conditions))
+        : db.select().from(entities)
+      ).orderBy(desc(entities.scrapedAt)).limit(limit).offset(offset),
+    ]);
+
+    return { total: Number(countResult[0]?.count ?? 0), items };
+  }
+
+  async getEntity(id: string): Promise<(Entity & { relations: EntityRelation[] }) | undefined> {
+    const [entity] = await db.select().from(entities).where(eq(entities.id, id));
+    if (!entity) return undefined;
+    const relations = await db.select().from(entityRelations).where(eq(entityRelations.fromEntityId, id));
+    return { ...entity, relations };
+  }
+
+  async createEntity(data: InsertEntity): Promise<Entity> {
+    const [e] = await db.insert(entities).values(data).returning();
+    return e;
+  }
+
+  async getEntityRelations(fromEntityId: string): Promise<EntityRelation[]> {
+    return db.select().from(entityRelations).where(eq(entityRelations.fromEntityId, fromEntityId));
+  }
+
+  async createEntityRelation(data: InsertEntityRelation): Promise<EntityRelation> {
+    const [r] = await db.insert(entityRelations).values(data).returning();
+    return r;
+  }
+
+  async getScrapeJobs(opts: { limit?: number; offset?: number } = {}): Promise<{ total: number; items: ScrapeJob[] }> {
+    const { limit = 20, offset = 0 } = opts;
+    const [countResult, items] = await Promise.all([
+      db.select({ count: sql<number>`count(*)` }).from(scrapeJobs),
+      db.select().from(scrapeJobs).orderBy(desc(scrapeJobs.startedAt)).limit(limit).offset(offset),
+    ]);
+    return { total: Number(countResult[0]?.count ?? 0), items };
+  }
+
+  async getScrapeJob(id: string): Promise<ScrapeJob | undefined> {
+    const [j] = await db.select().from(scrapeJobs).where(eq(scrapeJobs.id, id));
+    return j;
+  }
+
+  async createScrapeJob(data: InsertScrapeJob): Promise<ScrapeJob> {
+    const [j] = await db.insert(scrapeJobs).values(data).returning();
+    return j;
+  }
+
+  async updateScrapeJob(id: string, data: Partial<InsertScrapeJob>): Promise<ScrapeJob | undefined> {
+    const [j] = await db.update(scrapeJobs).set(data).where(eq(scrapeJobs.id, id)).returning();
+    return j;
+  }
+
+  async getScrapeSources(): Promise<ScrapeSource[]> {
+    return db.select().from(scrapeSources).where(eq(scrapeSources.isActive, true)).orderBy(scrapeSources.name);
+  }
+
+  async createScrapeSource(data: InsertScrapeSource): Promise<ScrapeSource> {
+    const [s] = await db.insert(scrapeSources).values(data).returning();
+    return s;
   }
 }
 

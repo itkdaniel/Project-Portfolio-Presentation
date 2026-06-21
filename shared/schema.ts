@@ -472,3 +472,87 @@ export const updateScopeRequestSchema = z.object({
 export type InsertScopeRequest = z.infer<typeof insertScopeRequestSchema>;
 export type UpdateScopeRequest = z.infer<typeof updateScopeRequestSchema>;
 export type ScopeRequest = typeof scopeRequests.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NEXUS SCRAPER — Entity Database
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Entity Types ───────────────────────────────────────────────────────────
+// Classification categories for scraped entities (seeded via seed-entity-types.ts)
+export const entityTypes = pgTable("entity_types", {
+  id:          serial("id").primaryKey(),
+  name:        text("name").notNull().unique(),        // e.g. "Person", "Technology"
+  color:       text("color").notNull().default("#6366f1"), // hex display color
+  description: text("description").notNull().default(""),
+});
+
+export const insertEntityTypeSchema = createInsertSchema(entityTypes).omit({ id: true });
+export type InsertEntityType = z.infer<typeof insertEntityTypeSchema>;
+export type EntityType = typeof entityTypes.$inferSelect;
+
+// ── Entities ───────────────────────────────────────────────────────────────
+// Structured records extracted from scraped pages via NLP classification
+export const entities = pgTable("entities", {
+  id:           varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  type:         text("type").notNull(),               // matches entityTypes.name
+  title:        text("title").notNull(),
+  summary:      text("summary"),
+  sourceUrl:    text("source_url").notNull(),
+  sourceLabel:  text("source_label"),                 // e.g. "Hacker News", "Reddit"
+  rawContent:   text("raw_content"),
+  embedding:    doublePrecision("embedding").array(),  // L2-normalized NLP embedding
+  confidence:   doublePrecision("confidence"),         // classifier confidence 0–1
+  trendScore:   doublePrecision("trend_score").notNull().default(0),
+  scrapedAt:    timestamp("scraped_at").notNull().defaultNow(),
+  classifiedAt: timestamp("classified_at"),
+});
+
+export const insertEntitySchema = createInsertSchema(entities).omit({ id: true, scrapedAt: true });
+export type InsertEntity = z.infer<typeof insertEntitySchema>;
+export type Entity = typeof entities.$inferSelect;
+
+// ── Entity Relations ────────────────────────────────────────────────────────
+// Weighted directed edges between entities (used by the knowledge graph)
+export const entityRelations = pgTable("entity_relations", {
+  id:           serial("id").primaryKey(),
+  fromEntityId: varchar("from_entity_id").notNull().references(() => entities.id, { onDelete: "cascade" }),
+  toEntityId:   varchar("to_entity_id").notNull().references(() => entities.id, { onDelete: "cascade" }),
+  relationType: text("relation_type").notNull(),      // e.g. "mentions", "related_to", "uses"
+  weight:       doublePrecision("weight").notNull().default(1.0),
+  createdAt:    timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertEntityRelationSchema = createInsertSchema(entityRelations).omit({ id: true, createdAt: true });
+export type InsertEntityRelation = z.infer<typeof insertEntityRelationSchema>;
+export type EntityRelation = typeof entityRelations.$inferSelect;
+
+// ── Scrape Jobs ────────────────────────────────────────────────────────────
+// Tracks the lifecycle of each scrape request
+export const scrapeJobs = pgTable("scrape_jobs", {
+  id:           varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  targetUrl:    text("target_url").notNull(),
+  status:       text("status").notNull().default("pending"), // pending | running | completed | failed
+  entityCount:  integer("entity_count").notNull().default(0),
+  errorMessage: text("error_message"),
+  startedAt:    timestamp("started_at").notNull().defaultNow(),
+  completedAt:  timestamp("completed_at"),
+});
+
+export const insertScrapeJobSchema = createInsertSchema(scrapeJobs).omit({ id: true, startedAt: true, completedAt: true });
+export type InsertScrapeJob = z.infer<typeof insertScrapeJobSchema>;
+export type ScrapeJob = typeof scrapeJobs.$inferSelect;
+
+// ── Scrape Sources ─────────────────────────────────────────────────────────
+// Configured data sources for the trending scraper (APIs, RSS, HTML, onion)
+export const scrapeSources = pgTable("scrape_sources", {
+  id:         serial("id").primaryKey(),
+  name:       text("name").notNull().unique(),
+  type:       text("type").notNull().default("html"),  // rss | api | html | onion
+  configJson: jsonb("config_json").notNull().default(sql`'{}'::jsonb`),
+  lastRunAt:  timestamp("last_run_at"),
+  isActive:   boolean("is_active").notNull().default(true),
+});
+
+export const insertScrapeSourceSchema = createInsertSchema(scrapeSources).omit({ id: true });
+export type InsertScrapeSource = z.infer<typeof insertScrapeSourceSchema>;
+export type ScrapeSource = typeof scrapeSources.$inferSelect;

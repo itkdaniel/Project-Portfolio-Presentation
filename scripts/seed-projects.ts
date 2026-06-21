@@ -189,6 +189,39 @@ GET  /openapi.json             — OpenAPI specification`,
     published: true,
     featured: true,
   },
+  {
+    name: "Nexus Scraper — Web Scraper + Entity Database",
+    description: "Web scraper microservice that crawls URLs, classifies entities via NLP, stores structured knowledge with embeddings, and seeds trending data from HN + Reddit every 6 h.",
+    longDescription: `A standalone FastAPI scraper microservice that powers the NexusConsult knowledge graph.
+Fetches HTML with httpx, strips to clean text via BeautifulSoup, then pipes through the NexusAI
+service for intent classification and L2-normalized embedding generation.
+Extracted entities (Person, Organization, Technology, Concept, Event, Location, Product, Article,
+Repository, Dataset) are stored with confidence scores and vector embeddings for downstream graph queries.
+Trending content is automatically seeded every 6 hours from Hacker News top-30 and Reddit /r/technology top-20.
+Integrated with the NexusConsult gateway at /api/apps/scraper/proxy/* for transparent proxying.
+Features: APScheduler cron jobs, URL deduplication by SHA-256 hash, SOCKS5 onion proxy support,
+paginated REST API, and full OpenAPI documentation.`,
+    type: "Microservice",
+    tags: ["FastAPI", "Python", "BeautifulSoup", "NLP", "APScheduler", "PostgreSQL", "Tor", "Docker"],
+    githubUrl: "https://github.com/itkdaniel/nexus-scraper",
+    runCommand: "docker build -t nexus-scraper . && docker run -p 8005:8005 nexus-scraper",
+    testCommand: "pytest tests/ -v --cov=app",
+    usageInstructions: `GET  /health                      — health check
+POST /v1/scrape/url               — scrape a URL (extracts text, classifies, stores entities)
+POST /v1/scrape/onion             — scrape a .onion URL via SOCKS5 proxy
+GET  /v1/scrape/jobs              — list recent scrape jobs
+GET  /v1/scrape/jobs/:id          — job detail with entities
+POST /v1/scrape/trending          — trigger HN + Reddit trending scrape
+GET  /v1/entities                 — list entities (paginated, filter by type/source)
+GET  /v1/entities/:id             — entity detail with relations
+GET  /v1/entity-types             — available classification types
+GET  /openapi.json                — OpenAPI specification`,
+    demoApiEndpoint: "/api/apps/scraper/proxy/health",
+    sandboxUrl: "http://localhost:8005",
+    status: "active",
+    published: true,
+    featured: true,
+  },
 ];
 
 // Sub-app project names for upsert identification
@@ -197,6 +230,7 @@ const SUB_APP_NAMES = new Set([
   "Nexus Tax — IRS Form Assistant",
   "Nexus Search — BM25 Full-Text Engine",
   "Nexus AI — Transformer Inference Service",
+  "Nexus Scraper — Web Scraper + Entity Database",
 ]);
 
 async function seed() {

@@ -141,6 +141,32 @@ export function buildRegistry(): SubAppInfo[] {
       ],
       githubUrl: "https://github.com/itkdaniel/nexus-ai",
     },
+    {
+      name: "scraper",
+      label: "Nexus Scraper",
+      description:
+        "Web scraper microservice — crawls URLs, classifies entities via NLP, stores structured knowledge with embeddings; trending seeds from HN + Reddit every 6 h.",
+      baseUrl: resolveUrl("SUB_APP_SCRAPER_URL", "NEXUS_SCRAPER_URL", 8005),
+      port: 8005,
+      healthPath: "/health",
+      openApiPath: "/openapi.json",
+      tags: ["FastAPI", "Python", "BeautifulSoup", "NLP", "PostgreSQL", "APScheduler"],
+      matchKeys: ["scraper", "scrape", "entity", "crawl", "trending", "hn", "reddit", "knowledge"],
+      endpoints: [
+        { method: "GET",  path: "/health",                  description: "Health check",               auth: false },
+        { method: "GET",  path: "/info",                    description: "Service info + endpoint list",auth: false },
+        { method: "POST", path: "/v1/scrape/url",           description: "Scrape a single URL",        auth: false },
+        { method: "POST", path: "/v1/scrape/onion",         description: "Scrape a .onion URL via Tor", auth: false },
+        { method: "GET",  path: "/v1/scrape/jobs",          description: "List recent scrape jobs",    auth: false },
+        { method: "GET",  path: "/v1/scrape/jobs/:id",      description: "Single job detail",          auth: false },
+        { method: "POST", path: "/v1/scrape/trending",      description: "Trigger trending scrape run",auth: false },
+        { method: "GET",  path: "/v1/entities",             description: "List entities (paginated)",  auth: false },
+        { method: "GET",  path: "/v1/entities/:id",         description: "Single entity with relations",auth: false },
+        { method: "GET",  path: "/v1/entity-types",         description: "Available entity types",     auth: false },
+        { method: "GET",  path: "/openapi.json",            description: "OpenAPI spec",               auth: false },
+      ],
+      githubUrl: "https://github.com/itkdaniel/nexus-scraper",
+    },
   ];
 }
 
