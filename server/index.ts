@@ -5,6 +5,7 @@ import { createServer } from "http";
 import { join } from "path";
 import { mkdirSync } from "fs";
 import { validateEncryptionKey } from "./crypto";
+import { startExpiryNotifier } from "./expiry-notifier";
 
 const app = express();
 const httpServer = createServer(app);
@@ -72,6 +73,8 @@ app.use((req, res, next) => {
   app.use("/uploads", express.static(uploadsDir));
 
   await registerRoutes(httpServer, app);
+
+  startExpiryNotifier();
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

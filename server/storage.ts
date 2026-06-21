@@ -117,6 +117,7 @@ export interface IStorage {
   revokeScope(userId: string, scope: string): Promise<boolean>;
   getAllGrantedScopes(): Promise<(GrantedScope & { username: string | null; email: string | null; fullName: string | null })[]>;
   revokeScopeById(id: string): Promise<boolean>;
+  getExpiringGrants(withinDays: number): Promise<(GrantedScope & { username: string | null; email: string | null })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -653,6 +654,32 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(grantedScopes.id, id), sql`revoked_at IS NULL`))
       .returning();
     return r.length > 0;
+  }
+
+  async getExpiringGrants(withinDays: number): Promise<(GrantedScope & { username: string | null; email: string | null })[]> {
+    const rows = await db
+      .select({
+        id:         grantedScopes.id,
+        userId:     grantedScopes.userId,
+        scope:      grantedScopes.scope,
+        grantedBy:  grantedScopes.grantedBy,
+        grantedAt:  grantedScopes.grantedAt,
+        expiresAt:  grantedScopes.expiresAt,
+        revokedAt:  grantedScopes.revokedAt,
+        username:   users.username,
+        email:      users.email,
+      })
+      .from(grantedScopes)
+      .leftJoin(users, eq(grantedScopes.userId, users.id))
+      .where(
+        and(
+          sql`${grantedScopes.revokedAt} IS NULL`,
+          sql`${grantedScopes.expiresAt} IS NOT NULL`,
+          sql`${grantedScopes.expiresAt} > NOW()`,
+          sql`${grantedScopes.expiresAt} <= NOW() + INTERVAL '${sql.raw(String(withinDays))} days'`,
+        ),
+      );
+    return rows;
   }
 }
 
