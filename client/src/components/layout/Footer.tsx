@@ -46,10 +46,10 @@ export function Footer() {
           <div>
             <h4 className="font-display font-semibold mb-4 text-foreground">Infrastructure</h4>
             <ul className="space-y-3">
-              <li><Link href="/status" className="text-sm text-muted-foreground hover:text-primary transition-colors">Microservices</Link></li>
+              <li><a href="/#services-gateway" className="text-sm text-muted-foreground hover:text-primary transition-colors">Microservices</a></li>
               <li><Link href="/architecture" className="text-sm text-muted-foreground hover:text-primary transition-colors">Database Design</Link></li>
-              <li><Link href="/architecture#infrastructure" className="text-sm text-muted-foreground hover:text-primary transition-colors">Docker Containers</Link></li>
-              <li><Link href="/architecture#infrastructure" className="text-sm text-muted-foreground hover:text-primary transition-colors">CI/CD Pipelines</Link></li>
+              <li><a href="/architecture#infrastructure" className="text-sm text-muted-foreground hover:text-primary transition-colors">Docker Containers</a></li>
+              <li><a href="/architecture#infrastructure" className="text-sm text-muted-foreground hover:text-primary transition-colors">CI/CD Pipelines</a></li>
             </ul>
           </div>
 

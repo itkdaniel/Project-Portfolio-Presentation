@@ -78,6 +78,9 @@ export function Navbar() {
           <Link href="/architecture" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-architecture">
             <GitBranch className="w-4 h-4" /> Architecture
           </Link>
+          <Link href="/status" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-deployments">
+            <Activity className="w-4 h-4" /> Deployments
+          </Link>
           <Link href="/tests" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-tests">
             <FlaskConical className="w-4 h-4" /> Tests
           </Link>
@@ -154,6 +157,9 @@ export function Navbar() {
           </Link>
           <Link href="/architecture" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-architecture-mobile">
             <GitBranch className="w-4 h-4" /> Architecture
+          </Link>
+          <Link href="/status" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-deployments-mobile">
+            <Activity className="w-4 h-4" /> Deployments
           </Link>
           <Link href="/tests" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
             <FlaskConical className="w-4 h-4" /> Tests

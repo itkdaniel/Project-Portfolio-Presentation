@@ -290,7 +290,7 @@ function SubAppSection({ app }: { app: SubApp }) {
     staleTime: 30_000,
   });
 
-  const liveEndpoints: Array<{ method: string; path: string; summary?: string }> = [];
+  const liveEndpoints: Array<{ method: string; path: string; summary?: string; auth?: boolean }> = [];
   if (spec?.paths) {
     for (const [path, methods] of Object.entries(spec.paths as Record<string, OpenApiPath>)) {
       for (const [method, det] of Object.entries(methods)) {
@@ -300,6 +300,9 @@ function SubAppSection({ app }: { app: SubApp }) {
       }
     }
   }
+
+  // Static fallback from the gateway registry (available even when the sub-app is offline)
+  const staticEndpoints: Array<{ method: string; path: string; description?: string; auth?: boolean }> = health?.endpoints ?? [];
   const statusStr: "healthy" | "unhealthy" | "unconfigured" = health?.status ?? "unconfigured";
 
   return (
@@ -349,9 +352,16 @@ function SubAppSection({ app }: { app: SubApp }) {
           <div className="space-y-2">
             {liveEndpoints.map((ep, i) => <EndpointRow key={i} endpoint={ep} proxyPrefix={`/api/apps/${app.name}/proxy`} />)}
           </div>
+        ) : staticEndpoints.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground bg-amber-400/5 border border-amber-400/10 rounded-lg px-3 py-2 mb-3">
+              Service offline — showing static endpoint list from registry. Try-it sandbox will connect when the service starts.
+            </p>
+            {staticEndpoints.map((ep, i) => <EndpointRow key={i} endpoint={ep} proxyPrefix={`/api/apps/${app.name}/proxy`} />)}
+          </div>
         ) : !isLoading ? (
           <div className="text-xs text-muted-foreground bg-black/20 rounded-lg p-4 border border-white/5">
-            OpenAPI spec unavailable — service may be offline. Proxy path: <code className="font-mono">/api/apps/{app.name}/proxy/*</code>
+            No endpoint data available. Proxy path: <code className="font-mono">/api/apps/{app.name}/proxy/*</code>
           </div>
         ) : null}
       </div>
