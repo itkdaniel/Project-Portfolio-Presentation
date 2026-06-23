@@ -284,35 +284,49 @@ const DIAGRAMS = {
     crypto_users ||--o{ portfolio_snapshots : "has"`,
 
   systemFlow: `flowchart TD
-    Browser["🌐 Browser / CLI Client"]
-    Nginx["⚙️ Nginx :80/:443\\nReverse Proxy + TLS"]
-    Express["🟢 Express.js :5000\\nMain API + SPA + WebSocket"]
-    PG[("🐘 PostgreSQL\\nPrimary Database")]
-    Redis[("🔴 Redis\\nCache + Pub/Sub")]
+    Browser["🌐 Browser / CLI"]
+    Nginx["⚙️ Nginx :80/:443\\nTLS + Reverse Proxy"]
 
-    Booking["📅 Nexus Booking\\n:8003 FastAPI"]
-    Tax["📄 Nexus Tax\\n:8004 FastAPI"]
-    Search["🔍 Nexus Search\\n:8002 FastAPI + BM25"]
-    AI["🤖 Nexus AI\\n:8001 PyTorch"]
-    Scraper["🕷️ Nexus Scraper\\n:8005 FastAPI"]
-    Graph["🕸️ Nexus Graph\\n:8006 FastAPI + igraph"]
-    Crypto["₿ NexusCrypto\\n:8100 Next.js Gateway"]
+    subgraph Core ["NexusConsult Core :5000"]
+      Express["🟢 Express.js\\nSPA + REST + WS + Gateway"]
+      PG[("🐘 PostgreSQL")]
+      Redis[("🔴 Redis")]
+    end
 
-    Browser --> Nginx
-    Nginx --> Express
-    Express --> PG
-    Express --> Redis
-    Express -. "gateway\\nproxy" .-> Booking
-    Express -. "gateway\\nproxy" .-> Tax
-    Express -. "gateway\\nproxy" .-> Search
-    Express -. "gateway\\nproxy" .-> AI
-    Express -. "gateway\\nproxy" .-> Scraper
-    Express -. "gateway\\nproxy" .-> Graph
-    Express -. "gateway\\nproxy" .-> Crypto
+    subgraph Svcs ["Microservices"]
+      AI["🤖 AI :8001\\nPyTorch NLP"]
+      Search["🔍 Search :8002\\nBM25 + Cache"]
+      Booking["📅 Booking :8003\\nScheduling"]
+      Tax["📄 Tax :8004\\nIRS Forms"]
+      Scraper["🕷️ Scraper :8005\\nEntity Crawler"]
+      Graph["🕸️ Graph :8006\\nKnowledge Graph"]
+    end
+
+    subgraph CryptoNet ["NexusCrypto Ecosystem"]
+      CryptoGW["₿ Gateway :8100"]
+      Market["📈 Market :8101"]
+      Wallet["👜 Wallet :8102"]
+      DEX["⚖️ DEX :8103"]
+      Analytics["📊 Analytics :8104"]
+    end
+
+    Browser -- "HTTP/WS" --> Nginx
+    Nginx -- "HTTP" --> Express
+    Express -- "SQL" --> PG
+    Express -- "cache" --> Redis
+    Express -. "proxy HTTP" .-> AI
+    Express -. "proxy HTTP" .-> Search
+    Express -. "proxy HTTP" .-> Booking
+    Express -. "proxy HTTP" .-> Tax
+    Express -. "proxy HTTP" .-> Scraper
+    Express -. "proxy HTTP" .-> Graph
+    Express -. "proxy HTTP" .-> CryptoGW
+    CryptoGW --> Market
+    CryptoGW --> Wallet
+    CryptoGW --> DEX
+    CryptoGW --> Analytics
     Search --> Redis
     Scraper --> Redis
-    Scraper --> PG
-    Graph --> PG
 
     style Express fill:#1d4ed8,stroke:#3b82f6
     style PG fill:#0f4c75,stroke:#1e90ff
@@ -339,6 +353,42 @@ const DIAGRAMS = {
     Contracts --> DEX
     Analytics --> Market
     Analytics --> Wallet`,
+
+  composeStack: `flowchart TD
+    nginx["⚙️ nginx\\n:80 / :443"]
+    web["🟢 web (Express)\\n:5000"]
+    python["🐍 python-service\\n:8002 BM25"]
+    ai["🤖 ai-service\\n:8001 PyTorch"]
+    booking["📅 booking\\n:8003"]
+    tax["📄 tax\\n:8004"]
+    scraper["🕷️ scraper\\n:8005"]
+    graph["🕸️ graph\\n:8006"]
+    crypto["₿ nexus-crypto\\n:8100-8104"]
+    pg[("🐘 postgres\\n:5432")]
+    redis[("🔴 redis\\n:6379")]
+    mongo[("🍃 mongo\\n:27017")]
+
+    nginx --> web
+    nginx --> python
+    nginx --> ai
+    web --> pg
+    web --> redis
+    python --> redis
+    python --> pg
+    ai --> pg
+    booking --> pg
+    tax --> pg
+    scraper --> redis
+    scraper --> mongo
+    graph --> pg
+    crypto --> redis
+    crypto --> pg
+
+    style nginx fill:#1e293b,stroke:#475569
+    style web fill:#1d4ed8,stroke:#3b82f6
+    style pg fill:#0f4c75,stroke:#1e90ff
+    style redis fill:#7f1d1d,stroke:#ef4444
+    style mongo fill:#0f4c1a,stroke:#16a34a`,
 
   infraStack: `flowchart TD
     GH["🐙 GitHub Actions CI/CD"]
@@ -425,11 +475,11 @@ const DB_GROUPS: DbGroup[] = [
 ];
 
 const SYSTEM_CARDS: DiagramCard[] = [
-  { title: "System Architecture", description: "Nginx reverse proxy routes traffic to Express.js (main app + gateway) and all microservices. Express proxies sub-app requests via the API gateway layer.", code: DIAGRAMS.systemFlow },
-  { title: "NexusCrypto Ecosystem", description: "NexusCrypto gateway unifies market data feeds, HD wallet management, AMM/DEX trading, and portfolio analytics into a single platform.", code: DIAGRAMS.cryptoFlow },
+  { title: "System Architecture — All 11 Services", description: "Nginx reverse proxy → Express.js gateway → all 11 sub-apps via HTTP proxy. NexusCrypto sub-apps are grouped under their gateway (ports 8100–8104). Express also manages the PostgreSQL primary DB and Redis cache.", code: DIAGRAMS.systemFlow },
 ];
 
 const INFRA_CARDS: DiagramCard[] = [
+  { title: "Docker Compose Service Topology", description: "All services defined in docker-compose.yml: nginx (reverse proxy), web (Express), python-service (BM25), ai-service (PyTorch), booking, tax, scraper, graph, and the nexus-crypto suite — all wired to PostgreSQL, Redis, and MongoDB.", code: DIAGRAMS.composeStack },
   { title: "CI/CD & Kubernetes", description: "GitHub Actions builds and pushes images to GHCR, then deploys to a Kubernetes cluster with HPA auto-scaling and an Ingress controller.", code: DIAGRAMS.infraStack },
 ];
 

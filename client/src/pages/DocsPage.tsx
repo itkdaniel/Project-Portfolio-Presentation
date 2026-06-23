@@ -135,10 +135,23 @@ const METHOD_COLORS: Record<string, string> = {
 };
 
 function extractPathParams(path: string): string[] {
-  return (path.match(/:([a-zA-Z_][a-zA-Z0-9_]*)/g) || []).map((p) => p.slice(1));
+  const params: string[] = [];
+  const seen = new Set<string>();
+  // OpenAPI {param} style
+  for (const m of path.matchAll(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g)) {
+    if (!seen.has(m[1])) { params.push(m[1]); seen.add(m[1]); }
+  }
+  // Express :param style
+  for (const m of path.matchAll(/:([a-zA-Z_][a-zA-Z0-9_]*)/g)) {
+    if (!seen.has(m[1])) { params.push(m[1]); seen.add(m[1]); }
+  }
+  return params;
 }
 function resolvePathParams(path: string, params: Record<string, string>): string {
-  return path.replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, (_, n) => encodeURIComponent(params[n] || `:${n}`));
+  // Replace {param} (OpenAPI) and :param (Express) — both styles
+  return path
+    .replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g, (_, n) => encodeURIComponent(params[n] || `{${n}}`))
+    .replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, (_, n) => encodeURIComponent(params[n] || `:${n}`));
 }
 
 // ── TryItPanel ────────────────────────────────────────────────────────────────
