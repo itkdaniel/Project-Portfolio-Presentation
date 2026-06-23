@@ -1,4 +1,5 @@
-import { Cpu, Github, Linkedin, Twitter, Mail } from "lucide-react";
+import { Link } from "wouter";
+import { Cpu, Github, Linkedin } from "lucide-react";
 
 const GITHUB_URL   = "https://github.com/itkdaniel";
 const LINKEDIN_URL = "https://linkedin.com/in/itkdaniel";
@@ -39,33 +40,26 @@ export function Footer() {
               >
                 <Linkedin className="w-4 h-4" />
               </a>
-              <a
-                href="#"
-                aria-label="Twitter"
-                className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-white/5"
-              >
-                <Twitter className="w-4 h-4" />
-              </a>
             </div>
           </div>
 
           <div>
             <h4 className="font-display font-semibold mb-4 text-foreground">Infrastructure</h4>
             <ul className="space-y-3">
-              <li><a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">Microservices</a></li>
-              <li><a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">Database Design</a></li>
-              <li><a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">Docker Containers</a></li>
-              <li><a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">CI/CD Pipelines</a></li>
+              <li><Link href="/status" className="text-sm text-muted-foreground hover:text-primary transition-colors">Microservices</Link></li>
+              <li><Link href="/architecture" className="text-sm text-muted-foreground hover:text-primary transition-colors">Database Design</Link></li>
+              <li><Link href="/architecture#infrastructure" className="text-sm text-muted-foreground hover:text-primary transition-colors">Docker Containers</Link></li>
+              <li><Link href="/architecture#infrastructure" className="text-sm text-muted-foreground hover:text-primary transition-colors">CI/CD Pipelines</Link></li>
             </ul>
           </div>
 
           <div>
             <h4 className="font-display font-semibold mb-4 text-foreground">Client Portal</h4>
             <ul className="space-y-3">
-              <li><a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">Project Dashboard</a></li>
-              <li><a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">API Keys</a></li>
-              <li><a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">Usage Analytics</a></li>
-              <li><a href="/settings" className="text-sm text-muted-foreground hover:text-primary transition-colors">Settings</a></li>
+              <li><Link href="/status" className="text-sm text-muted-foreground hover:text-primary transition-colors">Project Dashboard</Link></li>
+              <li><Link href="/settings" className="text-sm text-muted-foreground hover:text-primary transition-colors">API Keys</Link></li>
+              <li><Link href="/status" className="text-sm text-muted-foreground hover:text-primary transition-colors">Usage Analytics</Link></li>
+              <li><Link href="/settings" className="text-sm text-muted-foreground hover:text-primary transition-colors">Settings</Link></li>
             </ul>
           </div>
         </div>

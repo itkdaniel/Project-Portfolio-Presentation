@@ -15,6 +15,8 @@ import LoginPage from "@/pages/LoginPage";
 import NotificationsPage from "@/pages/NotificationsPage";
 import AdminApprovalsPage from "@/pages/AdminApprovalsPage";
 import AdminScopesPage from "@/pages/AdminScopes";
+import DocsPage from "@/pages/DocsPage";
+import ArchitecturePage from "@/pages/ArchitecturePage";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -32,6 +34,8 @@ function Router() {
       <Route path="/notifications" component={NotificationsPage}/>
       <Route path="/admin/approvals" component={AdminApprovalsPage}/>
       <Route path="/admin/scopes" component={AdminScopesPage}/>
+      <Route path="/docs" component={DocsPage}/>
+      <Route path="/architecture" component={ArchitecturePage}/>
       <Route component={NotFound} />
     </Switch>
   );

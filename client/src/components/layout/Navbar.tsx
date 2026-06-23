@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText, Activity, BookOpen, LogIn, UserPlus, LogOut, ClipboardCheck, Shield } from "lucide-react";
+import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText, Activity, BookOpen, LogIn, UserPlus, LogOut, ClipboardCheck, Shield, GitBranch } from "lucide-react";
 import { NotificationBell } from "./NotificationBell";
 
 interface MeUser { id: string; username: string; email: string; role?: string; fullName?: string; profilePictureUrl?: string; }
@@ -69,14 +69,15 @@ export function Navbar() {
 
         {/* Desktop Nav */}
         <div className="hidden md:flex items-center gap-6">
-          {isHome ? (
-            <>
-              <a href="#services" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Architecture</a>
-              <a href="#portfolio" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Deployments</a>
-            </>
-          ) : (
+          {!isHome && (
             <Link href="/" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Home</Link>
           )}
+          <Link href="/docs" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-docs">
+            <Terminal className="w-4 h-4" /> Docs
+          </Link>
+          <Link href="/architecture" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-architecture">
+            <GitBranch className="w-4 h-4" /> Architecture
+          </Link>
           <Link href="/tests" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-tests">
             <FlaskConical className="w-4 h-4" /> Tests
           </Link>
@@ -145,14 +146,15 @@ export function Navbar() {
       {/* Mobile Menu */}
       {mobileMenuOpen && (
         <div className="md:hidden absolute top-full left-0 w-full bg-card border-b border-border p-4 flex flex-col gap-3 shadow-xl">
-          {isHome ? (
-            <>
-              <a href="#services" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground" onClick={() => setMobileMenuOpen(false)}>Architecture</a>
-              <a href="#portfolio" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground" onClick={() => setMobileMenuOpen(false)}>Deployments</a>
-            </>
-          ) : (
+          {!isHome && (
             <Link href="/" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground" onClick={() => setMobileMenuOpen(false)}>Home</Link>
           )}
+          <Link href="/docs" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-docs-mobile">
+            <Terminal className="w-4 h-4" /> Docs
+          </Link>
+          <Link href="/architecture" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-architecture-mobile">
+            <GitBranch className="w-4 h-4" /> Architecture
+          </Link>
           <Link href="/tests" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
             <FlaskConical className="w-4 h-4" /> Tests
           </Link>

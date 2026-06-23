@@ -178,14 +178,16 @@ export function Hero() {
             
             <div className="flex flex-wrap items-center gap-4 mt-4">
               <Button size="lg" className="rounded-full h-14 px-8 text-base shadow-[0_0_20px_rgba(59,130,246,0.3)] group" asChild>
-                <a href="#portfolio">
+                <a href="/status">
                   View Deployments
                   <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </a>
               </Button>
-              <Button size="lg" variant="outline" className="rounded-full h-14 px-8 text-base bg-card/50 backdrop-blur-sm border-white/10 hover:bg-white/5">
-                <Terminal className="mr-2 w-5 h-5" />
-                API Documentation
+              <Button size="lg" variant="outline" className="rounded-full h-14 px-8 text-base bg-card/50 backdrop-blur-sm border-white/10 hover:bg-white/5" asChild>
+                <a href="/docs">
+                  <Terminal className="mr-2 w-5 h-5" />
+                  API Documentation
+                </a>
               </Button>
             </div>
 
