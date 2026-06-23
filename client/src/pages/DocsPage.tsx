@@ -249,7 +249,7 @@ function EndpointRow({ endpoint, proxyPrefix }: { endpoint: CoreEndpoint | { met
       <button className="w-full flex items-center gap-3 bg-black/30 p-2.5 hover:bg-black/50 transition-colors text-left" onClick={() => setOpen(v => !v)}>
         <span className={`font-mono text-xs px-2 py-0.5 rounded border font-bold shrink-0 ${METHOD_COLORS[endpoint.method] || "text-muted-foreground"}`}>{endpoint.method}</span>
         <code className="text-xs text-foreground/80 font-mono flex-1 truncate">{endpoint.path}</code>
-        {isAuth && <Lock className="w-3 h-3 text-yellow-400/60 shrink-0" title="Requires auth" />}
+        {isAuth && <span title="Requires auth"><Lock className="w-3 h-3 text-yellow-400/60 shrink-0" aria-label="Requires authentication" /></span>}
         {desc && <span className="text-xs text-muted-foreground hidden sm:block truncate max-w-[200px] shrink-0">{String(desc)}</span>}
         {open ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
       </button>
