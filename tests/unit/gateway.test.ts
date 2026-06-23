@@ -19,11 +19,11 @@ import {
 // ── Registry ─────────────────────────────────────────────────────────────────
 
 describe("buildRegistry()", () => {
-  it("returns exactly 6 sub-apps", () => {
-    expect(buildRegistry()).toHaveLength(6);
+  it("returns exactly 11 sub-apps", () => {
+    expect(buildRegistry()).toHaveLength(11);
   });
 
-  it("includes booking, tax, search, ai, scraper, and graph entries", () => {
+  it("includes booking, tax, search, ai, scraper, graph and all NexusCrypto entries", () => {
     const names = buildRegistry().map((a) => a.name);
     expect(names).toContain("booking");
     expect(names).toContain("tax");
@@ -31,6 +31,11 @@ describe("buildRegistry()", () => {
     expect(names).toContain("ai");
     expect(names).toContain("scraper");
     expect(names).toContain("graph");
+    expect(names).toContain("crypto");
+    expect(names).toContain("crypto-market");
+    expect(names).toContain("crypto-wallet");
+    expect(names).toContain("crypto-dex");
+    expect(names).toContain("crypto-analytics");
   });
 
   it("each entry has required fields", () => {
@@ -101,6 +106,11 @@ describe("buildRegistry()", () => {
       "SUB_APP_BOOKING_URL","NEXUS_BOOKING_URL","SUB_APP_TAX_URL","NEXUS_TAX_URL",
       "SUB_APP_SEARCH_URL","NEXUS_SEARCH_URL","SUB_APP_AI_URL","NEXUS_AI_URL",
       "SUB_APP_SCRAPER_URL","NEXUS_SCRAPER_URL","SUB_APP_GRAPH_URL","NEXUS_GRAPH_URL",
+      "SUB_APP_CRYPTO_URL","NEXUS_CRYPTO_URL",
+      "SUB_APP_CRYPTO_MARKET_URL","NEXUS_CRYPTO_MARKET_URL",
+      "SUB_APP_CRYPTO_WALLET_URL","NEXUS_CRYPTO_WALLET_URL",
+      "SUB_APP_CRYPTO_DEX_URL","NEXUS_CRYPTO_DEX_URL",
+      "SUB_APP_CRYPTO_ANALYTICS_URL","NEXUS_CRYPTO_ANALYTICS_URL",
     ];
     const saved: Record<string, string | undefined> = {};
     envKeys.forEach((k) => { saved[k] = process.env[k]; delete process.env[k]; });
@@ -108,6 +118,8 @@ describe("buildRegistry()", () => {
     const reg = buildRegistry();
     const portMap: Record<string, number> = {
       booking: 8003, tax: 8004, search: 8002, ai: 8001, scraper: 8005, graph: 8006,
+      crypto: 8100, "crypto-market": 8101, "crypto-wallet": 8102,
+      "crypto-dex": 8103, "crypto-analytics": 8104,
     };
     for (const app of reg) {
       expect(app.baseUrl).toBe(`http://localhost:${portMap[app.name]}`);
@@ -204,17 +216,23 @@ describe("checkAllHealth()", () => {
     vi.restoreAllMocks();
   });
 
-  it("always returns 6 results regardless of upstream failures", async () => {
+  it("always returns 11 results regardless of upstream failures", async () => {
+    // 11 apps in registry — provide 11 mock responses
     mockFetch
       .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) })
       .mockRejectedValueOnce(new Error("down"))
       .mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) })
       .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) })
       .mockRejectedValueOnce(new Error("down"))
+      .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) })
+      .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) })
+      .mockRejectedValueOnce(new Error("down"))
+      .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) })
+      .mockRejectedValueOnce(new Error("down"))
       .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) });
 
     const results = await checkAllHealth();
-    expect(results).toHaveLength(6);
+    expect(results).toHaveLength(11);
   });
 
   it("runs health checks in parallel (Promise.allSettled)", async () => {
@@ -224,21 +242,27 @@ describe("checkAllHealth()", () => {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
     });
     await checkAllHealth();
-    expect(order.length).toBe(6);
+    expect(order.length).toBe(11);
   });
 
   it("mixed results: healthy + unhealthy in same batch", async () => {
+    // 3 healthy, 8 unhealthy across 11 apps
     mockFetch
       .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) })
       .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) })
+      .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) })
+      .mockRejectedValueOnce(new Error("timeout"))
+      .mockRejectedValueOnce(new Error("timeout"))
+      .mockRejectedValueOnce(new Error("timeout"))
+      .mockRejectedValueOnce(new Error("timeout"))
       .mockRejectedValueOnce(new Error("timeout"))
       .mockRejectedValueOnce(new Error("timeout"))
       .mockRejectedValueOnce(new Error("timeout"))
       .mockRejectedValueOnce(new Error("timeout"));
 
     const results = await checkAllHealth();
-    expect(results.filter((r) => r.status === "healthy")).toHaveLength(2);
-    expect(results.filter((r) => r.status === "unhealthy")).toHaveLength(4);
+    expect(results.filter((r) => r.status === "healthy")).toHaveLength(3);
+    expect(results.filter((r) => r.status === "unhealthy")).toHaveLength(8);
   });
 
   it("each result includes endpoints array", async () => {
@@ -367,11 +391,11 @@ afterAll(async () => {
 });
 
 describe("GET /api/apps", () => {
-  it("returns 200 and an array of 6 sub-apps", async () => {
+  it("returns 200 and an array of 11 sub-apps", async () => {
     const res = await request.get("/api/apps");
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBe(6);
+    expect(res.body.length).toBe(11);
   });
 
   it("each entry has name, label, description, baseUrl, endpoints, status", async () => {
@@ -386,7 +410,7 @@ describe("GET /api/apps", () => {
     }
   });
 
-  it("includes all six app names", async () => {
+  it("includes all eleven app names", async () => {
     const res = await request.get("/api/apps");
     const names = res.body.map((a: { name: string }) => a.name);
     expect(names).toContain("booking");
@@ -395,15 +419,20 @@ describe("GET /api/apps", () => {
     expect(names).toContain("ai");
     expect(names).toContain("scraper");
     expect(names).toContain("graph");
+    expect(names).toContain("crypto");
+    expect(names).toContain("crypto-market");
+    expect(names).toContain("crypto-wallet");
+    expect(names).toContain("crypto-dex");
+    expect(names).toContain("crypto-analytics");
   });
 });
 
 describe("GET /api/apps/health", () => {
-  it("returns 200 and 6 health-status objects", async () => {
+  it("returns 200 and 11 health-status objects", async () => {
     const res = await request.get("/api/apps/health");
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBe(6);
+    expect(res.body.length).toBe(11);
   });
 
   it("each entry has status field", async () => {
