@@ -26,7 +26,7 @@ const CORE_API: CoreGroup[] = [
   {
     name: "auth", label: "Authentication",
     endpoints: [
-      { method: "POST", path: "/api/auth/login",    description: "Login → JWT",               auth: false, body: '{"email":"admin@nexusconsult.dev","password":"Admin@Nexus2024!"}' },
+      { method: "POST", path: "/api/auth/login",    description: "Login → JWT",               auth: false, body: '{"email":"user@example.com","password":"••••••••••••"}' },
       { method: "POST", path: "/api/auth/register", description: "Register new account",       auth: false, body: '{"username":"demo","email":"demo@example.com","password":"Demo@1234!","fullName":"Demo User"}' },
       { method: "GET",  path: "/api/auth/me",        description: "Authenticated user profile", auth: true  },
     ],
@@ -57,7 +57,7 @@ const CORE_API: CoreGroup[] = [
       { method: "PATCH", path: "/api/settings",               description: "Update user settings",         auth: true, body: '{"displayName":"New Name","timezone":"America/New_York"}' },
       { method: "GET",   path: "/api/settings/email-config",  description: "Email config (admin)",         auth: true  },
       { method: "PATCH", path: "/api/settings/email-config",  description: "Update email config (admin)",  auth: true  },
-      { method: "POST",  path: "/api/settings/change-password",description: "Change password",             auth: true, body: '{"currentPassword":"Demo@User2024!","newPassword":"New@Pass2024!"}' },
+      { method: "POST",  path: "/api/settings/change-password",description: "Change password",             auth: true, body: '{"currentPassword":"••••••••••••","newPassword":"••••••••••••"}' },
     ],
   },
   {
@@ -268,6 +268,9 @@ function CoreApiSection() {
       <div>
         <h2 className="font-display text-2xl font-bold mb-1">NexusConsult Core API</h2>
         <p className="text-muted-foreground text-sm">REST API served by Express.js · Base URL: <code className="font-mono text-xs bg-white/5 px-1.5 py-0.5 rounded">http://localhost:5000</code> · JWT Bearer auth</p>
+        <p className="text-xs text-amber-400/70 bg-amber-400/5 border border-amber-400/10 rounded-lg px-3 py-2 mt-3">
+          This catalog covers primary endpoints. Additional internal routes (resume, tax proxy, notification-prefs test, granted-scopes) are omitted for brevity — see <code className="font-mono">server/routes.ts</code> for the complete surface.
+        </p>
       </div>
       <div className="flex flex-wrap gap-2">
         {CORE_API.map(g => (
@@ -453,10 +456,9 @@ export default function DocsPage() {
 
               <div className="pt-4 px-3">
                 <div className="rounded-lg bg-black/30 border border-white/5 p-3 text-xs text-muted-foreground space-y-1">
-                  <div className="font-semibold text-foreground/60 mb-2">Quick Auth</div>
-                  <div><span className="text-yellow-400">Admin:</span> admin@nexusconsult.dev</div>
-                  <div><span className="text-blue-400">User:</span> demo@nexusconsult.dev</div>
-                  <div className="text-[10px] mt-2 text-muted-foreground/60">Token auto-injected from localStorage</div>
+                  <div className="font-semibold text-foreground/60 mb-2">Auth</div>
+                  <div>Sign in via <code className="font-mono text-primary">POST /api/auth/login</code></div>
+                  <div className="text-[10px] mt-2 text-muted-foreground/60">Bearer token auto-injected from localStorage after login</div>
                 </div>
               </div>
 
