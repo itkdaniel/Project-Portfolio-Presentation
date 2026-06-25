@@ -58,6 +58,38 @@ test.describe("Booking Page — E2E", () => {
     await page.click('[data-testid="button-submit-booking"]');
     await expect(page.getByText(/valid email/i)).toBeVisible();
   });
+
+  test("full booking submission shows confirmation screen", async ({ page }) => {
+    await page.goto("/book");
+
+    // Step 1: select first available weekday
+    const dayButtons = page.locator(".rdp-day button:not([disabled])");
+    await expect(dayButtons.first()).toBeVisible({ timeout: 10000 });
+    await dayButtons.first().click();
+
+    // Step 2: select first available time slot
+    const timeBtn = page.locator('[data-testid^="btn-time-"]').first();
+    await expect(timeBtn).toBeVisible({ timeout: 5000 });
+    await timeBtn.click();
+
+    // Step 3: fill in the details form
+    await page.fill('[data-testid="input-name"]', "Jane Smith");
+    await page.fill('[data-testid="input-email"]', "jane.smith@example.com");
+    await page.fill('[data-testid="input-company"]', "Acme Corp");
+
+    // Open the Radix UI meeting-type select and pick the first option
+    await page.click('[data-testid="select-meeting-type"]');
+    await page.getByRole("option", { name: "Technical Discovery Call" }).click();
+
+    await page.fill('[data-testid="input-details"]', "We need help migrating our monolith to microservices and improving CI/CD pipelines.");
+
+    // Submit the form
+    await page.click('[data-testid="button-submit-booking"]');
+
+    // Confirm success screen appears
+    await expect(page.getByRole("heading", { name: /Session Confirmed/i })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/jane\.smith@example\.com/i)).toBeVisible();
+  });
 });
 
 test.describe("Home Page — E2E", () => {
