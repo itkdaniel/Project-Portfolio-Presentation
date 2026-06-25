@@ -175,9 +175,45 @@ jobs:
         run: npx playwright test
         continue-on-error: true
 
+      - name: Save first-run failures for comparison
+        if: steps.e2e-first.outcome == 'failure'
+        run: |
+          node -e "
+            const fs = require('fs');
+            let failing = [];
+            try {
+              const data = JSON.parse(fs.readFileSync('test-results/e2e-results.json', 'utf8'));
+              function collect(suite, ancestors) {
+                const prefix = ancestors.length ? ancestors.join(' > ') + ' > ' : '';
+                for (const spec of suite.specs || []) {
+                  if (!spec.ok) failing.push(prefix + spec.title);
+                }
+                for (const child of suite.suites || []) {
+                  collect(child, suite.title ? [...ancestors, suite.title] : ancestors);
+                }
+              }
+              for (const s of data.suites || []) collect(s, []);
+            } catch (e) { console.error('Could not parse e2e-results.json:', e.message); }
+            fs.mkdirSync('test-results', { recursive: true });
+            fs.writeFileSync('test-results/e2e-first-failures.txt', failing.join('\n'));
+            console.log('Captured ' + failing.length + ' first-run failure(s):', failing);
+          "
+
       - name: Re-run only failed E2E specs
+        id: e2e-retry
         if: steps.e2e-first.outcome == 'failure'
         run: npx playwright test --last-failed
+        continue-on-error: true
+
+      - name: Post E2E job summary
+        if: always()
+        run: node scripts/e2e-summary.js
+
+      - name: Fail if E2E tests still failing after retry
+        if: steps.e2e-retry.outcome == 'failure'
+        run: |
+          echo "E2E tests failed on both the initial run and the retry. See the job summary for details."
+          exit 1
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
