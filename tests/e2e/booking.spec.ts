@@ -70,15 +70,12 @@ test.describe("Home Page — E2E", () => {
   test("project showcase loads with tab navigation", async ({ page }) => {
     await page.goto("/");
     await page.waitForSelector("#portfolio", { timeout: 10000 });
-    // After DB is populated, tabs should appear
+    // seed-e2e.ts ensures at least 2 published projects exist before E2E runs
     const tabs = page.locator("[data-testid^='tab-project-']");
-    const tabCount = await tabs.count();
-    // Either tabs are present or empty state is shown
-    if (tabCount > 0) {
-      await tabs.first().click();
-    } else {
-      await expect(page.getByText(/No projects published/i)).toBeVisible();
-    }
+    await expect(tabs.first()).toBeVisible({ timeout: 10000 });
+    await tabs.first().click();
+    // Detail panel should be visible after selecting a tab
+    await expect(page.locator("#portfolio")).toBeVisible();
   });
 
   test("load balancer simulation runs", async ({ page }) => {

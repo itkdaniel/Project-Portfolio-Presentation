@@ -1,13 +1,14 @@
 /**
  * Seed minimum baseline data required for E2E tests to run reliably.
- * Seeds: corp roles, data ratings, admin user, demo user.
+ * Seeds: corp roles, data ratings, admin user, demo user, sample projects.
  * Uses upserts so re-running is idempotent.
  *
  * Run with: npx tsx scripts/seed-e2e.ts
  */
 import { db } from "../server/db";
-import { corpRoles, dataRatings, users } from "../shared/schema";
+import { corpRoles, dataRatings, users, projects } from "../shared/schema";
 import { hashPassword } from "../server/auth";
+import { count } from "drizzle-orm";
 
 const ROLES = [
   { name: "user",      displayName: "User",               level: 1, dataRating: "G",       description: "Entry-level. Read-only public data access only." },
@@ -56,6 +57,37 @@ async function seed() {
     await db.insert(users).values({ username: u.username, email: u.email, password: hashed, role: u.role })
       .onConflictDoUpdate({ target: users.email, set: { username: u.username, role: u.role } });
     console.log(`  ✓ ${u.email} (${u.role})`);
+  }
+
+  console.log("\nSeeding sample projects for E2E…");
+  const [{ value: projectCount }] = await db.select({ value: count() }).from(projects);
+  if (Number(projectCount) === 0) {
+    const SAMPLE_PROJECTS = [
+      {
+        name: "NexusAuth — JWT + RBAC Microservice",
+        description: "Production-grade auth service with role-based access control, refresh token rotation, and OAuth2 support.",
+        type: "Microservice",
+        tags: ["Node.js", "TypeScript", "JWT", "PostgreSQL", "Redis", "OAuth2"],
+        status: "active" as const,
+        published: true,
+        featured: true,
+      },
+      {
+        name: "StreamForge — Kafka Event Pipeline",
+        description: "High-throughput event streaming pipeline processing 50K+ events/sec with at-least-once delivery guarantees.",
+        type: "Data Pipeline",
+        tags: ["Python", "Kafka", "PostgreSQL", "Redis", "Docker", "Kubernetes"],
+        status: "active" as const,
+        published: true,
+        featured: true,
+      },
+    ];
+    for (const p of SAMPLE_PROJECTS) {
+      await db.insert(projects).values(p);
+      console.log(`  ✓ ${p.name}`);
+    }
+  } else {
+    console.log(`  ↳ ${projectCount} project(s) already present, skipping.`);
   }
 
   console.log("\n✓ E2E baseline seed complete.");
