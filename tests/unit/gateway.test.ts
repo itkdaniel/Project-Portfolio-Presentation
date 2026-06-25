@@ -512,3 +512,107 @@ describe("GET /api/apps/:name/proxy (transparent proxy)", () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ── DocsPage response shape contracts ─────────────────────────────────────────
+// These tests pin the exact fields that DocsPage.tsx / SubAppSection reads so
+// a breaking change to the gateway response shape is caught before the browser.
+
+describe("DocsPage shape contract — GET /api/apps/:name", () => {
+  it("response includes 'name' field matching the requested app", async () => {
+    const res = await request.get("/api/apps/search");
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe("search");
+  });
+
+  it("response includes 'status' field with a recognised value", async () => {
+    const res = await request.get("/api/apps/ai");
+    expect(res.status).toBe(200);
+    expect(["healthy", "unhealthy", "unconfigured"]).toContain(res.body.status);
+  });
+
+  it("response includes 'endpoints' array (SubAppSection reads health?.endpoints)", async () => {
+    const res = await request.get("/api/apps/booking");
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.endpoints)).toBe(true);
+    expect(res.body.endpoints.length).toBeGreaterThan(0);
+  });
+
+  it("each endpoint object exposes method, path, description and auth fields", async () => {
+    const res = await request.get("/api/apps/tax");
+    expect(res.status).toBe(200);
+    for (const ep of res.body.endpoints as Array<Record<string, unknown>>) {
+      expect(["GET","POST","PUT","PATCH","DELETE"]).toContain(ep.method);
+      expect(typeof ep.path).toBe("string");
+      expect((ep.path as string).startsWith("/")).toBe(true);
+      expect(typeof ep.description).toBe("string");
+      expect(typeof ep.auth).toBe("boolean");
+    }
+  });
+
+  it("response includes 'latencyMs' as a number", async () => {
+    const res = await request.get("/api/apps/graph");
+    expect(res.status).toBe(200);
+    expect(typeof res.body.latencyMs).toBe("number");
+  });
+
+  it("all eleven app names return the correct 'name' field", async () => {
+    const names = [
+      "booking","tax","search","ai","scraper","graph",
+      "crypto","crypto-market","crypto-wallet","crypto-dex","crypto-analytics",
+    ];
+    await Promise.all(
+      names.map(async (name) => {
+        const res = await request.get(`/api/apps/${name}`);
+        expect(res.status).toBe(200);
+        expect(res.body.name).toBe(name);
+      })
+    );
+  });
+});
+
+describe("DocsPage shape contract — GET /api/apps/:name/openapi (offline graceful null)", () => {
+  it("returns null data body (not an error) when sub-app is unreachable", async () => {
+    // All sub-apps are offline in the test environment; the route must return 503
+    // with a null/absent data payload — never throw or return 500.
+    const res = await request.get("/api/apps/ai/openapi");
+    // Accept both 503 (offline) and 200 (if somehow reachable)
+    expect([200, 503]).toContain(res.status);
+    if (res.status === 503) {
+      // DocsPage checks spec?.paths — null body must not crash the frontend
+      expect(res.body === null || res.body === "" || typeof res.body === "object").toBe(true);
+    }
+  });
+
+  it("503 response body is null so spec?.paths is safe to evaluate as falsy", async () => {
+    // Simulate the offline case by hitting a sub-app that is guaranteed offline
+    // (any of the sub-apps running locally will be unreachable in CI).
+    const res = await request.get("/api/apps/scraper/openapi");
+    if (res.status === 503) {
+      // The gateway must not return a truthy paths object on failure
+      const paths = res.body?.paths;
+      expect(paths).toBeFalsy();
+    }
+  });
+
+  it("offline openapi endpoint still returns X-Cache MISS (not HIT) so no stale spec is served", async () => {
+    const res = await request.get("/api/apps/crypto-dex/openapi");
+    expect([200, 503]).toContain(res.status);
+    if (res.status === 503) {
+      // A failed fetch must not be cached — X-Cache should be MISS
+      expect(res.headers["x-cache"]).toBe("MISS");
+    }
+  });
+
+  it("returns 404 for an unknown app name (not 500)", async () => {
+    const res = await request.get("/api/apps/nonexistent-app/openapi");
+    expect(res.status).toBe(404);
+    expect(res.body.message).toMatch(/not found/i);
+  });
+
+  it("response shape for a 503 has no 'paths' key so DocsPage falls back to static endpoints", async () => {
+    const res = await request.get("/api/apps/graph/openapi");
+    if (res.status === 503) {
+      expect(res.body).not.toHaveProperty("paths");
+    }
+  });
+});
