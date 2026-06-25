@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
@@ -71,11 +71,44 @@ const AVAILABILITY = buildAvailability();
 
 const STEPS = ["Date", "Time", "Details", "Confirm"];
 
+const SESSION_KEY = "nexus_booking_wizard";
+
+function loadSession(): { step: number; date: string | null; time: string | null } {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return { step: 0, date: null, time: null };
+}
+
+function saveSession(step: number, date: Date | undefined, time: string | null) {
+  try {
+    sessionStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify({ step, date: date ? format(date, "yyyy-MM-dd") : null, time })
+    );
+  } catch {}
+}
+
+function clearSession() {
+  try {
+    sessionStorage.removeItem(SESSION_KEY);
+  } catch {}
+}
+
 export default function Booking() {
-  const [step, setStep] = useState(0);
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const saved = loadSession();
+
+  const [step, setStep] = useState<number>(saved.step);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(
+    saved.date ? new Date(saved.date + "T12:00:00") : undefined
+  );
+  const [selectedTime, setSelectedTime] = useState<string | null>(saved.time);
   const [isBooked, setIsBooked] = useState(false);
+
+  useEffect(() => {
+    saveSession(step, selectedDate, selectedTime);
+  }, [step, selectedDate, selectedTime]);
 
   const form = useForm<BookingValues>({
     resolver: zodResolver(bookingSchema),
@@ -85,7 +118,10 @@ export default function Booking() {
 
   const bookingMutation = useMutation({
     mutationFn: bookingsApi.create,
-    onSuccess: () => setIsBooked(true),
+    onSuccess: () => {
+      clearSession();
+      setIsBooked(true);
+    },
   });
 
   const dateKey = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
@@ -331,11 +367,11 @@ export default function Booking() {
                   <h3 className="text-lg font-display font-semibold mb-3">Step 3 — Your Details</h3>
                   <div className="flex flex-wrap gap-2">
                     {selectedDate ? (
-                      <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-mono text-xs">
+                      <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-mono text-xs" data-testid="badge-selected-date">
                         {format(selectedDate, "MMM do, yyyy")}
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="text-muted-foreground border-white/10 text-xs italic">No date</Badge>
+                      <Badge variant="outline" className="text-muted-foreground border-white/10 text-xs italic" data-testid="badge-selected-date">No date</Badge>
                     )}
                     {selectedTime ? (
                       <Badge variant="outline" className="bg-accent/10 text-accent border-accent/20 font-mono text-xs">

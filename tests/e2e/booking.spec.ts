@@ -114,6 +114,33 @@ test.describe("Booking Page — E2E", () => {
     await expect(page.getByText(/valid email/i)).toBeVisible();
   });
 
+  test("wizard state persists across page reload after date selection", async ({ page }) => {
+    await page.goto("/book");
+
+    // Select first available weekday
+    const dayButtons = page.locator(".rdp-day button:not([disabled])");
+    await expect(dayButtons.first()).toBeVisible({ timeout: 10000 });
+    await dayButtons.first().click();
+
+    // Wait for time slots to appear (confirms step advanced)
+    await expect(page.getByText(/Step 2/i)).toBeVisible({ timeout: 5000 });
+
+    // Capture the selected date badge text before reload
+    const dateBadge = page.locator('[data-testid="badge-selected-date"]');
+    const dateText = await dateBadge.textContent();
+
+    // Reload the page mid-flow
+    await page.reload();
+
+    // The selected date badge should still be visible with the same text
+    await expect(page.locator('[data-testid="badge-selected-date"]')).toBeVisible({ timeout: 5000 });
+    const dateTextAfterReload = await page.locator('[data-testid="badge-selected-date"]').textContent();
+    expect(dateTextAfterReload).toBe(dateText);
+
+    // Time slot panel should still be shown (step was restored)
+    await expect(page.getByText(/Step 2/i)).toBeVisible();
+  });
+
   test("full booking submission shows confirmation screen", async ({ page }) => {
     await page.goto("/book");
 
