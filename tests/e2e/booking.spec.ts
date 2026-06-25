@@ -34,6 +34,61 @@ test.describe("Booking Page — E2E", () => {
     }
   });
 
+  test("weekend and past days are disabled in the calendar", async ({ page }) => {
+    await page.goto("/book");
+    const calendar = page.locator("[data-testid='calendar-date-picker']");
+    await expect(calendar).toBeVisible();
+
+    // react-day-picker v9 sets data-disabled="true" on the <td> gridcell for disabled
+    // days, and data-today="true" on today's cell.
+
+    // 1. Today must be disabled (the booking form blocks same-day bookings).
+    const todayCell = calendar.locator("td[data-today='true']");
+    await expect(todayCell).toHaveAttribute("data-disabled", "true");
+
+    // 2. Every visible weekend cell must also be disabled.
+    //    Each day cell carries data-day="yyyy-MM-dd" — derive day-of-week from that.
+    const allDayCells = calendar.locator("td[data-day]");
+    const dayCellCount = await allDayCells.count();
+    expect(dayCellCount).toBeGreaterThan(0);
+
+    for (let i = 0; i < dayCellCount; i++) {
+      const cell = allDayCells.nth(i);
+      const isoDate = await cell.getAttribute("data-day");
+      if (!isoDate) continue;
+      const dayOfWeek = new Date(`${isoDate}T12:00:00`).getDay(); // 0 = Sun, 6 = Sat
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        await expect(cell).toHaveAttribute("data-disabled", "true");
+      }
+    }
+
+    // 3. At least one disabled cell must be present (sanity guard — today is always one).
+    const disabledCells = calendar.locator("td[data-disabled='true']");
+    await expect(disabledCells.first()).toBeAttached();
+  });
+
+  test("clicking a disabled day does not advance to step 2", async ({ page }) => {
+    await page.goto("/book");
+    const calendar = page.locator("[data-testid='calendar-date-picker']");
+    await expect(calendar).toBeVisible();
+
+    // Verify we are on step 1 before doing anything.
+    await expect(page.getByText(/Step 1/i)).toBeVisible();
+
+    // react-day-picker v9 adds the HTML `disabled` attribute to the <button> element
+    // for every disabled (non-focused) day, so we can locate them with button[disabled].
+    const disabledBtn = calendar.locator("button[disabled]").first();
+    await expect(disabledBtn).toBeAttached();
+
+    // Force-click the disabled button (Playwright won't click it otherwise).
+    await disabledBtn.click({ force: true });
+
+    // The wizard must stay on step 1 — "Step 2" must never appear.
+    await expect(page.getByText(/Step 2/i)).not.toBeVisible();
+    // The "Date" step label must still be visible in the step progress bar.
+    await expect(page.getByText("Date")).toBeVisible();
+  });
+
   test("form is disabled until date and time are selected", async ({ page }) => {
     await page.goto("/book");
     const form = page.locator('[data-testid="button-submit-booking"]');
