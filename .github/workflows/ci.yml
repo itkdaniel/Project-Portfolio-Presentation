@@ -164,6 +164,12 @@ jobs:
         env:
           DATABASE_URL: postgresql://nexus:nexuspassword@localhost:5432/nexustest
 
+      - name: Seed baseline data for E2E (roles, ratings, users)
+        run: npx tsx scripts/seed-e2e.ts
+        env:
+          DATABASE_URL: postgresql://nexus:nexuspassword@localhost:5432/nexustest
+          JWT_SECRET: test-secret-ci
+
       - name: Run E2E tests (booking + docs + architecture)
         id: e2e-first
         run: npx playwright test
