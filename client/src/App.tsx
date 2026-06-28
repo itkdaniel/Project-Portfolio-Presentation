@@ -17,6 +17,7 @@ import AdminApprovalsPage from "@/pages/AdminApprovalsPage";
 import AdminScopesPage from "@/pages/AdminScopes";
 import DocsPage from "@/pages/DocsPage";
 import ArchitecturePage from "@/pages/ArchitecturePage";
+import QuantumPage from "@/pages/QuantumPage";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -36,6 +37,7 @@ function Router() {
       <Route path="/admin/scopes" component={AdminScopesPage}/>
       <Route path="/docs" component={DocsPage}/>
       <Route path="/architecture" component={ArchitecturePage}/>
+      <Route path="/quantum" component={QuantumPage}/>
       <Route component={NotFound} />
     </Switch>
   );

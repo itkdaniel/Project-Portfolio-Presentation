@@ -300,6 +300,7 @@ const DIAGRAMS = {
       Tax["📄 Tax :8004\\nIRS Forms"]
       Scraper["🕷️ Scraper :8005\\nEntity Crawler"]
       Graph["🕸️ Graph :8006\\nKnowledge Graph"]
+      Quantum["⚛️ Quantum :8200\\nAzure Quantum"]
     end
 
     subgraph CryptoNet ["NexusCrypto Ecosystem"]
@@ -320,6 +321,7 @@ const DIAGRAMS = {
     Express -. "proxy HTTP" .-> Tax
     Express -. "proxy HTTP" .-> Scraper
     Express -. "proxy HTTP" .-> Graph
+    Express -. "proxy HTTP" .-> Quantum
     Express -. "proxy HTTP" .-> CryptoGW
     CryptoGW --> Market
     CryptoGW --> Wallet
@@ -364,6 +366,7 @@ const DIAGRAMS = {
     scraper["🕷️ scraper\\n:8005"]
     graph["🕸️ graph\\n:8006"]
     crypto["₿ nexus-crypto\\n:8100-8104"]
+    quantum["⚛️ quantum\\n:8200"]
     pg[("🐘 postgres\\n:5432")]
     redis[("🔴 redis\\n:6379")]
     mongo[("🍃 mongo\\n:27017")]
@@ -383,6 +386,7 @@ const DIAGRAMS = {
     graph --> pg
     crypto --> redis
     crypto --> pg
+    quantum --> pg
 
     style nginx fill:#1e293b,stroke:#475569
     style web fill:#1d4ed8,stroke:#3b82f6
@@ -475,11 +479,11 @@ const DB_GROUPS: DbGroup[] = [
 ];
 
 const SYSTEM_CARDS: DiagramCard[] = [
-  { title: "System Architecture — All 11 Services", description: "Nginx reverse proxy → Express.js gateway → all 11 sub-apps via HTTP proxy. NexusCrypto sub-apps are grouped under their gateway (ports 8100–8104). Express also manages the PostgreSQL primary DB and Redis cache.", code: DIAGRAMS.systemFlow },
+  { title: "System Architecture — All 12 Services", description: "Nginx reverse proxy → Express.js gateway → all 12 standalone sub-app services via HTTP proxy. NexusCrypto sub-apps are grouped under their gateway (ports 8100–8104). Nexus Quantum runs on port 8200. Express also manages the PostgreSQL primary DB and Redis cache.", code: DIAGRAMS.systemFlow },
 ];
 
 const INFRA_CARDS: DiagramCard[] = [
-  { title: "Docker Compose Service Topology", description: "All services defined in docker-compose.yml: nginx (reverse proxy), web (Express), python-service (BM25), ai-service (PyTorch), booking, tax, scraper, graph, and the nexus-crypto suite — all wired to PostgreSQL, Redis, and MongoDB.", code: DIAGRAMS.composeStack },
+  { title: "Docker Compose Service Topology", description: "All services defined in docker-compose.yml: nginx (reverse proxy), web (Express), python-service (BM25), ai-service (PyTorch), booking, tax, scraper, graph, nexus-quantum (port 8200), and the nexus-crypto suite — all wired to PostgreSQL, Redis, and MongoDB.", code: DIAGRAMS.composeStack },
   { title: "CI/CD & Kubernetes", description: "GitHub Actions builds and pushes images to GHCR, then deploys to a Kubernetes cluster with HPA auto-scaling and an Ingress controller.", code: DIAGRAMS.infraStack },
 ];
 
@@ -667,7 +671,7 @@ export default function ArchitecturePage() {
             <div className="space-y-8" id="system">
               <div className="glass-panel rounded-xl border border-white/5 p-5 bg-card/20 mb-6">
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  NexusConsult is a polyglot microservice platform. The central Express.js server acts as the main web application, REST API server, WebSocket hub, and transparent API gateway — proxying requests to 11 standalone sub-app services, each independently deployable.
+                  NexusConsult is a polyglot microservice platform. The central Express.js server acts as the main web application, REST API server, WebSocket hub, and transparent API gateway — proxying requests to 12 standalone sub-app services, each independently deployable.
                 </p>
               </div>
               <StaticDiagramSection cards={SYSTEM_CARDS} />
@@ -688,6 +692,7 @@ export default function ArchitecturePage() {
                     { port: "8102", name: "Crypto Wallet",     desc: "HD Wallet / Web3" },
                     { port: "8103", name: "Crypto DEX",        desc: "AMM + Orders" },
                     { port: "8104", name: "Crypto Analytics",  desc: "P&L / Sharpe" },
+                    { port: "8200", name: "Nexus Quantum",     desc: "Azure Quantum / QAOA" },
                   ].map(s => (
                     <div key={s.port} className="bg-black/20 rounded-lg p-3 border border-white/5">
                       <code className="text-primary text-xs font-mono font-bold">:{s.port}</code>

@@ -8,7 +8,7 @@ import {
   BookOpen, Server, Search, Brain, FileText, Calendar,
   Network, Layers, Bitcoin, TrendingUp, Wallet, ArrowLeftRight,
   BarChart3, Play, Loader2, ChevronDown, ChevronUp, Link as LinkIcon,
-  Lock, ExternalLink, Github, Activity, Cpu, CheckCircle2, XCircle, Clock,
+  Lock, ExternalLink, Github, Activity, Cpu, CheckCircle2, XCircle, Clock, Atom,
 } from "lucide-react";
 
 // ── Core API definitions ──────────────────────────────────────────────────────
@@ -122,6 +122,7 @@ const SUB_APPS: SubApp[] = [
   { name: "crypto-wallet",    label: "Crypto Wallet",     icon: <Wallet className="w-4 h-4" />,          color: "text-purple-400 bg-purple-400/10",  iconColor: "text-purple-400", port: 8102, tags: ["FastAPI","Web3"] },
   { name: "crypto-dex",       label: "Crypto DEX",        icon: <ArrowLeftRight className="w-4 h-4" />, color: "text-red-400 bg-red-400/10",        iconColor: "text-red-400",    port: 8103, tags: ["FastAPI","AMM"] },
   { name: "crypto-analytics", label: "Crypto Analytics",  icon: <BarChart3 className="w-4 h-4" />,       color: "text-indigo-400 bg-indigo-400/10",  iconColor: "text-indigo-400", port: 8104, tags: ["FastAPI","Pandas"] },
+  { name: "quantum",          label: "Nexus Quantum",     icon: <Atom className="w-4 h-4" />,            color: "text-teal-400 bg-teal-400/10",      iconColor: "text-teal-400",   port: 8200, tags: ["FastAPI","Azure Quantum","QAOA"] },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
