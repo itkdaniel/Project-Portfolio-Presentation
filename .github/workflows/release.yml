@@ -1,0 +1,272 @@
+name: Release — Build, Publish & GitHub Release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "nexus-booking/v*"
+      - "nexus-tax/v*"
+      - "nexus-search/v*"
+      - "nexus-ai/v*"
+      - "nexus-graph/v*"
+      - "nexus-scraper/v*"
+      - "nexus-quantum/v*"
+      - "nexus-crypto/v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+
+jobs:
+  # ── Resolve which sub-app this tag targets ───────────────────────────────────
+  resolve:
+    name: Resolve tag metadata
+    runs-on: ubuntu-latest
+    outputs:
+      app_name: ${{ steps.meta.outputs.app_name }}
+      version: ${{ steps.meta.outputs.version }}
+      image: ${{ steps.meta.outputs.image }}
+      app_path: ${{ steps.meta.outputs.app_path }}
+      is_platform: ${{ steps.meta.outputs.is_platform }}
+
+    steps:
+      - name: Parse tag
+        id: meta
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "$TAG" == v* ]]; then
+            # Platform tag: v1.5.0
+            echo "app_name=nexusconsult"          >> $GITHUB_OUTPUT
+            echo "version=${TAG}"                  >> $GITHUB_OUTPUT
+            echo "image=ghcr.io/itkdaniel/web"    >> $GITHUB_OUTPUT
+            echo "app_path=."                      >> $GITHUB_OUTPUT
+            echo "is_platform=true"                >> $GITHUB_OUTPUT
+          else
+            # Sub-app tag: nexus-tax/v0.2.0
+            APP=$(echo "$TAG" | cut -d'/' -f1)
+            VER=$(echo "$TAG" | cut -d'/' -f2)
+            # Map logical app name → actual directory path
+            case "$APP" in
+              nexus-graph)   APP_PATH="nexus-graph" ;;
+              nexus-scraper) APP_PATH="nexus-scraper" ;;
+              nexus-crypto)  APP_PATH="apps/crypto-analytics" ;;
+              *)             APP_PATH="apps/${APP}" ;;
+            esac
+            echo "app_name=${APP}"                            >> $GITHUB_OUTPUT
+            echo "version=${VER}"                             >> $GITHUB_OUTPUT
+            echo "image=ghcr.io/itkdaniel/${APP}"            >> $GITHUB_OUTPUT
+            echo "app_path=${APP_PATH}"                       >> $GITHUB_OUTPUT
+            echo "is_platform=false"                          >> $GITHUB_OUTPUT
+          fi
+
+  # ── Full CI suite ────────────────────────────────────────────────────────────
+  ci:
+    name: Full CI (${{ needs.resolve.outputs.app_name }})
+    runs-on: ubuntu-latest
+    needs: resolve
+    defaults:
+      run:
+        working-directory: ${{ needs.resolve.outputs.app_path }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        if: needs.resolve.outputs.is_platform == 'false'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python deps
+        if: needs.resolve.outputs.is_platform == 'false'
+        run: |
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          else
+            pip install -e ".[dev]"
+          fi
+
+      - name: Lint (ruff + mypy)
+        if: needs.resolve.outputs.is_platform == 'false'
+        run: |
+          pip install ruff mypy
+          ruff check app/ tests/
+          mypy app/ --ignore-missing-imports --no-strict-optional
+
+      - name: Run full Python test suite
+        if: needs.resolve.outputs.is_platform == 'false'
+        run: pytest tests/ -v --cov=app --cov-report=xml
+
+      - name: Set up Node.js
+        if: needs.resolve.outputs.is_platform == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install Node deps
+        if: needs.resolve.outputs.is_platform == 'true'
+        run: npm ci
+
+      - name: Type check
+        if: needs.resolve.outputs.is_platform == 'true'
+        run: npx tsc --noEmit
+
+      - name: Run platform unit tests
+        if: needs.resolve.outputs.is_platform == 'true'
+        run: npx vitest run tests/unit tests/regression --reporter=verbose
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-${{ needs.resolve.outputs.app_name }}-${{ github.run_id }}
+          path: |
+            ${{ needs.resolve.outputs.app_path }}/coverage.xml
+            test-results/
+          retention-days: 14
+
+  # ── Build & push versioned Docker image ────────────────────────────────────
+  docker-publish:
+    name: Build & push Docker image
+    runs-on: ubuntu-latest
+    needs: [resolve, ci]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ needs.resolve.outputs.image }}
+          tags: |
+            type=raw,value=${{ needs.resolve.outputs.version }}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ needs.resolve.outputs.app_path }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Create GitHub Release ────────────────────────────────────────────────────
+  github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [resolve, docker-publish]
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Promote CHANGELOG [Unreleased] → versioned section
+        id: changelog_update
+        run: |
+          VERSION="${{ needs.resolve.outputs.version }}"
+          CHANGELOG_FILE="${{ needs.resolve.outputs.app_path }}/CHANGELOG.md"
+          TODAY=$(date +%Y-%m-%d)
+
+          if [[ -f "$CHANGELOG_FILE" ]]; then
+            # Only mutate if the version header doesn't already exist (idempotent)
+            if ! grep -q "^## \[${VERSION#v}\]" "$CHANGELOG_FILE"; then
+              sed -i "s|^## \[Unreleased\]|## [Unreleased]\n\n---\n\n## [${VERSION#v}] — ${TODAY}|" "$CHANGELOG_FILE"
+              git add "$CHANGELOG_FILE"
+              git diff --cached --quiet || git commit -m "chore(changelog): promote [Unreleased] → ${VERSION} for ${{ needs.resolve.outputs.app_name }}"
+              git push origin HEAD:main || git push origin HEAD || true
+              echo "updated=true" >> $GITHUB_OUTPUT
+            else
+              echo "updated=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "updated=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Extract CHANGELOG section for this version
+        id: changelog
+        run: |
+          VERSION="${{ needs.resolve.outputs.version }}"
+          CHANGELOG_FILE="${{ needs.resolve.outputs.app_path }}/CHANGELOG.md"
+          if [[ -f "$CHANGELOG_FILE" ]]; then
+            # Extract lines between this version header and the next
+            NOTES=$(awk "/^## \[${VERSION#v}\]/{found=1; next} found && /^## \[/{exit} found{print}" "$CHANGELOG_FILE")
+            echo "notes<<EOF" >> $GITHUB_OUTPUT
+            echo "$NOTES"     >> $GITHUB_OUTPUT
+            echo "EOF"        >> $GITHUB_OUTPUT
+          else
+            echo "notes=Auto-generated release for ${{ needs.resolve.outputs.app_name }} $VERSION" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "${{ needs.resolve.outputs.app_name }} ${{ needs.resolve.outputs.version }}"
+          body: |
+            ## ${{ needs.resolve.outputs.app_name }} ${{ needs.resolve.outputs.version }}
+
+            ${{ steps.changelog.outputs.notes }}
+
+            ---
+
+            **Docker image:** `${{ needs.resolve.outputs.image }}:${{ needs.resolve.outputs.version }}`
+
+            Pull with:
+            ```bash
+            docker pull ${{ needs.resolve.outputs.image }}:${{ needs.resolve.outputs.version }}
+            ```
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(needs.resolve.outputs.version, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Notify Slack ─────────────────────────────────────────────────────────────
+  notify:
+    name: Slack notification
+    runs-on: ubuntu-latest
+    needs: [resolve, github-release]
+    if: always()
+    continue-on-error: true
+
+    steps:
+      - name: Notify via Slack
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Release ${{ job.status }}: ${{ needs.resolve.outputs.app_name }} ${{ needs.resolve.outputs.version }} — ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

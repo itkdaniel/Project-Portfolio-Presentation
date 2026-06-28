@@ -1,7 +1,7 @@
 [project]
-name = "repl-nix-workspace"
-version = "0.1.0"
-description = "Add your description here"
+name = "nexusconsult"
+version = "1.5.0"
+description = "NexusConsult — Full-stack automation consulting platform"
 requires-python = ">=3.11"
 dependencies = [
     "aiosmtplib>=5.1.1",

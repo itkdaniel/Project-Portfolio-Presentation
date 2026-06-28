@@ -4,7 +4,7 @@ build-backend = "setuptools.backends.legacy:build"
 
 [project]
 name = "nexus-graph"
-version = "1.0.0"
+version = "0.1.0"
 description = "NexusGraph — Knowledge Graph + Visualization microservice"
 requires-python = ">=3.11"
 
