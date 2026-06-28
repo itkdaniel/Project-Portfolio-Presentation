@@ -26,3 +26,8 @@ services:
     volumes:
       - ./ai-service:/app
     command: uvicorn main:app --reload --host 0.0.0.0 --port 8001
+
+  nexus-quantum:
+    volumes:
+      - ./apps/nexus-quantum:/app
+    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8200

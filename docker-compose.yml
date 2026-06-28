@@ -64,6 +64,7 @@ services:
       DATABASE_URL: postgresql://${PGUSER:-nexus}:${PGPASSWORD:-nexuspassword}@postgres:5432/${PGDATABASE:-nexusdb}
       REDIS_URL: redis://:${REDIS_PASSWORD:-redispassword}@redis:6379
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      NEXUS_QUANTUM_URL: http://nexus-quantum:8200
     ports:
       - "5000:5000"
     depends_on:
@@ -154,6 +155,7 @@ services:
       - web
       - python-service
       - ai-service
+      - nexus-quantum
     logging: *default-logging
 
   # ── Nexus Quantum (Azure Quantum microservice) ─────────────────────────────
@@ -171,11 +173,14 @@ services:
       AZURE_QUANTUM_WORKSPACE_NAME: ${AZURE_QUANTUM_WORKSPACE_NAME:-}
       AZURE_QUANTUM_LOCATION: ${AZURE_QUANTUM_LOCATION:-eastus}
       NEXUS_QUANTUM_URL: http://nexus-quantum:8200
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redispassword}@redis:6379
       CORS_ORIGINS: '["*"]'
     ports:
       - "8200:8200"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8200/health')\""]
