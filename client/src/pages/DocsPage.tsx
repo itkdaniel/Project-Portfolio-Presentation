@@ -117,12 +117,12 @@ const SUB_APPS: SubApp[] = [
   { name: "ai",               label: "Nexus AI",          icon: <Brain className="w-4 h-4" />,           color: "text-amber-400 bg-amber-400/10",    iconColor: "text-amber-400",  port: 8001, tags: ["PyTorch","NLP","ML"] },
   { name: "scraper",          label: "Nexus Scraper",     icon: <Network className="w-4 h-4" />,         color: "text-orange-400 bg-orange-400/10",  iconColor: "text-orange-400", port: 8005, tags: ["FastAPI","BeautifulSoup"] },
   { name: "graph",            label: "Nexus Graph",       icon: <Layers className="w-4 h-4" />,          color: "text-cyan-400 bg-cyan-400/10",      iconColor: "text-cyan-400",   port: 8006, tags: ["FastAPI","igraph","D3"] },
+  { name: "quantum",          label: "Nexus Quantum",     icon: <Atom className="w-4 h-4" />,            color: "text-teal-400 bg-teal-400/10",      iconColor: "text-teal-400",   port: 8200, tags: ["FastAPI","Azure Quantum","QAOA"] },
   { name: "crypto",           label: "NexusCrypto",       icon: <Bitcoin className="w-4 h-4" />,         color: "text-yellow-400 bg-yellow-400/10",  iconColor: "text-yellow-400", port: 8100, tags: ["Next.js","WebSocket"] },
   { name: "crypto-market",    label: "Crypto Market",     icon: <TrendingUp className="w-4 h-4" />,      color: "text-green-400 bg-green-400/10",    iconColor: "text-green-400",  port: 8101, tags: ["FastAPI","OHLCV"] },
   { name: "crypto-wallet",    label: "Crypto Wallet",     icon: <Wallet className="w-4 h-4" />,          color: "text-purple-400 bg-purple-400/10",  iconColor: "text-purple-400", port: 8102, tags: ["FastAPI","Web3"] },
   { name: "crypto-dex",       label: "Crypto DEX",        icon: <ArrowLeftRight className="w-4 h-4" />, color: "text-red-400 bg-red-400/10",        iconColor: "text-red-400",    port: 8103, tags: ["FastAPI","AMM"] },
   { name: "crypto-analytics", label: "Crypto Analytics",  icon: <BarChart3 className="w-4 h-4" />,       color: "text-indigo-400 bg-indigo-400/10",  iconColor: "text-indigo-400", port: 8104, tags: ["FastAPI","Pandas"] },
-  { name: "quantum",          label: "Nexus Quantum",     icon: <Atom className="w-4 h-4" />,            color: "text-teal-400 bg-teal-400/10",      iconColor: "text-teal-400",   port: 8200, tags: ["FastAPI","Azure Quantum","QAOA"] },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -426,7 +426,7 @@ export default function DocsPage() {
                 <BookOpen className="w-5 h-5 text-primary" />
                 <h1 className="font-display text-xl font-bold">API Documentation</h1>
               </div>
-              <p className="text-sm text-muted-foreground">NexusConsult Core + 11 microservice sub-apps · Live try-it sandbox included</p>
+              <p className="text-sm text-muted-foreground">NexusConsult Core + 12 microservice sub-apps · Live try-it sandbox included</p>
             </div>
             <button className="md:hidden text-muted-foreground hover:text-foreground text-sm" onClick={() => setMobileOpen(v => !v)}>
               {mobileOpen ? "Close" : "Services ↓"}
@@ -449,8 +449,13 @@ export default function DocsPage() {
               </div>
 
               <div className="pt-3">
+                <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider px-3 mb-2">Nexus Quantum</p>
+                <SidebarItem label="Nexus Quantum" icon={<span className="text-teal-400"><Atom className="w-4 h-4" /></span>} active={selected === "quantum"} onClick={() => { setSelected("quantum"); setMobileOpen(false); }} badge="8200" />
+              </div>
+
+              <div className="pt-3">
                 <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider px-3 mb-2">NexusCrypto Ecosystem</p>
-                {SUB_APPS.slice(6).map(app => (
+                {SUB_APPS.slice(7).map(app => (
                   <SidebarItem key={app.name} label={app.label} icon={<span className={app.iconColor}>{app.icon}</span>} active={selected === app.name} onClick={() => { setSelected(app.name); setMobileOpen(false); }} badge={String(app.port)} indent={app.name !== "crypto"} />
                 ))}
               </div>
