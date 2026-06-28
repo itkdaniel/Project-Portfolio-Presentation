@@ -309,6 +309,39 @@ export function buildRegistry(): SubAppInfo[] {
       ],
       githubUrl: "https://github.com/itkdaniel/nexus-crypto-analytics",
     },
+
+    // ── Nexus Quantum ─────────────────────────────────────────────────────────
+    {
+      name: "quantum",
+      label: "Nexus Quantum",
+      description:
+        "Azure Quantum microservice — quantum circuit simulation, QAOA/VQE variational algorithms, and quantum-inspired optimization (portfolio balancing, route planning, QUBO constraint solving). Degrades gracefully to local simulation when Azure credentials are absent.",
+      baseUrl: resolveUrl("SUB_APP_QUANTUM_URL", "NEXUS_QUANTUM_URL", 8200),
+      port: 8200,
+      healthPath: "/health",
+      openApiPath: "/openapi.json",
+      tags: ["FastAPI", "Python", "Azure Quantum", "QAOA", "VQE", "Optimization"],
+      matchKeys: ["quantum", "qaoa", "vqe", "qubo", "circuit", "annealing", "qiskit", "variational"],
+      endpoints: [
+        { method: "GET",    path: "/health",                           description: "Health check",                    auth: false },
+        { method: "GET",    path: "/info",                             description: "Service metadata",                auth: false },
+        { method: "GET",    path: "/openapi.json",                     description: "OpenAPI spec",                    auth: false },
+        { method: "POST",   path: "/v1/quantum/jobs",                  description: "Submit a quantum job",            auth: false },
+        { method: "GET",    path: "/v1/quantum/jobs",                  description: "List submitted jobs",             auth: false },
+        { method: "GET",    path: "/v1/quantum/jobs/:job_id",          description: "Poll job status + results",       auth: false },
+        { method: "DELETE", path: "/v1/quantum/jobs/:job_id",          description: "Cancel a pending job",            auth: false },
+        { method: "POST",   path: "/v1/quantum/simulate",              description: "Simulate a quantum circuit",      auth: false },
+        { method: "GET",    path: "/v1/quantum/simulate/backends",     description: "List available simulators",       auth: false },
+        { method: "POST",   path: "/v1/quantum/optimize/portfolio",    description: "Portfolio optimization (QAOA)",   auth: false },
+        { method: "POST",   path: "/v1/quantum/optimize/route",        description: "Route optimization (annealing)",  auth: false },
+        { method: "POST",   path: "/v1/quantum/optimize/constraint",   description: "QUBO constraint solver",          auth: false },
+        { method: "GET",    path: "/v1/quantum/optimize/algorithms",   description: "List available algorithms",       auth: false },
+        { method: "POST",   path: "/v1/quantum/circuits",              description: "Save a circuit definition",       auth: false },
+        { method: "GET",    path: "/v1/quantum/circuits",              description: "List saved circuits",             auth: false },
+        { method: "GET",    path: "/v1/quantum/circuits/:circuit_id",  description: "Retrieve a circuit definition",   auth: false },
+      ],
+      githubUrl: "https://github.com/itkdaniel/nexus-quantum",
+    },
   ];
 }
 

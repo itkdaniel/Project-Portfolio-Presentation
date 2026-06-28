@@ -156,6 +156,34 @@ services:
       - ai-service
     logging: *default-logging
 
+  # ── Nexus Quantum (Azure Quantum microservice) ─────────────────────────────
+  nexus-quantum:
+    build:
+      context: ./apps/nexus-quantum
+      dockerfile: Dockerfile
+    container_name: nexus_quantum
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${PGUSER:-nexus}:${PGPASSWORD:-nexuspassword}@postgres:5432/${PGDATABASE:-nexusdb}
+      AZURE_QUANTUM_WORKSPACE_ID: ${AZURE_QUANTUM_WORKSPACE_ID:-}
+      AZURE_QUANTUM_SUBSCRIPTION_ID: ${AZURE_QUANTUM_SUBSCRIPTION_ID:-}
+      AZURE_QUANTUM_RESOURCE_GROUP: ${AZURE_QUANTUM_RESOURCE_GROUP:-}
+      AZURE_QUANTUM_WORKSPACE_NAME: ${AZURE_QUANTUM_WORKSPACE_NAME:-}
+      AZURE_QUANTUM_LOCATION: ${AZURE_QUANTUM_LOCATION:-eastus}
+      NEXUS_QUANTUM_URL: http://nexus-quantum:8200
+      CORS_ORIGINS: '["*"]'
+    ports:
+      - "8200:8200"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8200/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging: *default-logging
+
 volumes:
   postgres_data:
   redis_data:

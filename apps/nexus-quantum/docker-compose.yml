@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: nexuspassword
+      POSTGRES_DB: nexusquantum
+    ports:
+      - "5438:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus -d nexusquantum"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  quantum:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8200:8200"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://nexus:nexuspassword@postgres:5432/nexusquantum
+      AZURE_QUANTUM_WORKSPACE_ID: ${AZURE_QUANTUM_WORKSPACE_ID:-}
+      AZURE_QUANTUM_SUBSCRIPTION_ID: ${AZURE_QUANTUM_SUBSCRIPTION_ID:-}
+      AZURE_QUANTUM_RESOURCE_GROUP: ${AZURE_QUANTUM_RESOURCE_GROUP:-}
+      AZURE_QUANTUM_WORKSPACE_NAME: ${AZURE_QUANTUM_WORKSPACE_NAME:-}
+      AZURE_QUANTUM_LOCATION: ${AZURE_QUANTUM_LOCATION:-eastus}
+      CORS_ORIGINS: '["*"]'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8200/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  pgdata:
