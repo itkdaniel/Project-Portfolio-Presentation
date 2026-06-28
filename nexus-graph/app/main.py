@@ -16,14 +16,17 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import get_settings
 from app.database import close_db, init_db
 from app.routers.graph import router as graph_router
+from app.routers.quantum import router as quantum_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,6 +74,39 @@ def create_app() -> FastAPI:
 
     # ── API routes ────────────────────────────────────────────────────────────
     app.include_router(graph_router)
+    app.include_router(quantum_router)
+
+    # ── Quantum-aware exception handlers ──────────────────────────────────────
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+        if "/quantum/" in request.url.path:
+            from app.routers.quantum import get_backend as _qb
+            detail = exc.detail
+            err_msg = detail.get("error", str(detail)) if isinstance(detail, dict) else str(detail)
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"error": err_msg, "fallback_used": _qb().fallback_used},
+            )
+        # Preserve standard FastAPI {"detail": ...} envelope for non-quantum routes
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        if "/quantum/" in request.url.path:
+            from app.routers.quantum import get_backend as _qb
+            first_msg = exc.errors()[0].get("msg", "Validation error") if exc.errors() else "Validation error"
+            return JSONResponse(
+                status_code=422,
+                content={"error": str(first_msg), "fallback_used": _qb().fallback_used},
+            )
+        # Preserve standard FastAPI {"detail": ...} envelope for non-quantum routes
+        return JSONResponse(
+            status_code=422,
+            content={"detail": exc.errors()},
+        )
 
     # ── /health ───────────────────────────────────────────────────────────────
     @app.get("/health", tags=["meta"], summary="Health check")

@@ -47,6 +47,42 @@ nexus-graph/
 | GET | `/v1/graph/clusters` | — | Louvain community assignments (10 min cache) |
 | GET | `/v1/graph/subgraph/:id` | — | Ego-graph radius 2 (node + all 2-hop neighbours) |
 | POST | `/v1/graph/relations` | Admin | Create manual weighted relation |
+| POST | `/v1/graph/quantum/partition` | — | QAOA-inspired quantum graph bipartitioning (see below) |
+
+### Quantum Endpoint — `POST /v1/graph/quantum/partition`
+
+Finds a minimum-cut bipartition of the supplied graph using QAOA-inspired
+simulated annealing. Returns both partitions alongside a greedy classical
+Kernighan-Lin baseline for comparison.
+
+**Request**
+```json
+{
+  "nodes":      ["A", "B", "C", "D"],
+  "edges":      [{"source": "A", "target": "B", "weight": 1.5}],
+  "num_rounds": 300
+}
+```
+
+**Response**
+```json
+{
+  "partition_a":          ["A", "C"],
+  "partition_b":          ["B", "D"],
+  "cut_weight":           1.5,
+  "classical_cut_weight": 2.0,
+  "improvement_pct":      25.0,
+  "fallback_used":        true,
+  "error":                null
+}
+```
+
+`cut_weight` is always derived from the returned `partition_a` / `partition_b`
+so the metric is guaranteed to be consistent with the actual partition boundary.
+
+**Graceful fallback**: when `AZURE_QUANTUM_WORKSPACE_ID` is absent the
+simulation runs locally; `fallback_used` is `true`.  
+**Error shape on non-200**: `{"error": "...", "fallback_used": bool}` with HTTP 422.
 
 ## Graph Algorithms
 

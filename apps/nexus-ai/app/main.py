@@ -43,6 +43,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import Settings, get_settings
 from app.routers.ai import router as ai_router
+from app.routers.quantum import router as quantum_router
 
 logger = structlog.get_logger(__name__)
 
@@ -197,6 +198,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     )
 
     app.include_router(ai_router)
+    app.include_router(quantum_router)
 
     @app.get("/health", tags=["health"])
     async def health(request: Request):
@@ -224,6 +226,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 "POST /v1/ai/fill-mask",
                 "GET  /v1/ai/models",
                 "GET  /v1/ai/status",
+                "POST /v1/ai/quantum/embed",
                 "GET  /health",
                 "GET  /info",
                 "GET  /docs",
@@ -234,6 +237,14 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         request_id = str(uuid.uuid4())
         detail = exc.detail
+        if "/quantum/" in request.url.path:
+            from app.routers.quantum import get_backend as _qb
+            _fb = _qb().fallback_used
+            err_msg = detail.get("error", str(detail)) if isinstance(detail, dict) else str(detail)
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"error": err_msg, "fallback_used": _fb},
+            )
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -247,6 +258,14 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
         request_id = str(uuid.uuid4())
+        if "/quantum/" in request.url.path:
+            from app.routers.quantum import get_backend as _qb
+            _fb = _qb().fallback_used
+            first_msg = exc.errors()[0].get("msg", "Validation error") if exc.errors() else "Validation error"
+            return JSONResponse(
+                status_code=422,
+                content={"error": str(first_msg), "fallback_used": _fb},
+            )
         # Pydantic v2 may embed non-serializable objects in ctx; stringify them.
         import json as _j
         def _safe(v):

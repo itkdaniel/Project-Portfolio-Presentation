@@ -26,10 +26,12 @@ import time
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.algorithms.search import get_bm25_index, get_tag_graph, reset_indexes
 from app.auth import configure_auth
@@ -45,6 +47,7 @@ from app.database import (
 from app.models.project import ProjectModel, ProjectResponse
 from app.routers.projects import router as projects_router
 from app.routers.search import router as search_router
+from app.routers.quantum import router as quantum_router
 
 logger = structlog.get_logger(__name__)
 
@@ -110,6 +113,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(projects_router)
     app.include_router(search_router)
+    app.include_router(quantum_router)
 
     @app.get("/health", tags=["health"])
     async def health():
@@ -147,11 +151,46 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ],
         }
 
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+        if "/quantum/" in request.url.path:
+            from app.routers.quantum import get_backend as _qb
+            detail = exc.detail
+            err_msg = detail.get("error", str(detail)) if isinstance(detail, dict) else str(detail)
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"error": err_msg, "fallback_used": _qb().fallback_used},
+            )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"error": str(exc.detail)},
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        if "/quantum/" in request.url.path:
+            from app.routers.quantum import get_backend as _qb
+            first_msg = exc.errors()[0].get("msg", "Validation error") if exc.errors() else "Validation error"
+            return JSONResponse(
+                status_code=422,
+                content={"error": str(first_msg), "fallback_used": _qb().fallback_used},
+            )
+        return JSONResponse(
+            status_code=422,
+            content={"error": "Validation error", "details": exc.errors()},
+        )
+
     @app.exception_handler(Exception)
-    async def global_handler(request, exc):
+    async def global_handler(request: Request, exc: Exception):
         import uuid as _uuid
         request_id = str(_uuid.uuid4())
         logger.error("unhandled exception", path=request.url.path, error=str(exc), request_id=request_id)
+        if "/quantum/" in request.url.path:
+            from app.routers.quantum import get_backend as _qb
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Internal server error", "fallback_used": _qb().fallback_used},
+            )
         return JSONResponse(
             status_code=500,
             content={

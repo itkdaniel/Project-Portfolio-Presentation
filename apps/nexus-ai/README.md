@@ -58,7 +58,38 @@ OpenAPI docs: http://localhost:8001/docs
 | `POST` | `/v1/ai/similarity` | Cosine similarity between two texts |
 | `POST` | `/v1/ai/fill-mask` | Masked token prediction |
 | `GET`  | `/v1/ai/models` | List available model checkpoints |
-| `GET`  | `/v1/ai/status` | Model load status + device info |
+| `POST` | `/v1/ai/quantum/embed` | VQE quantum feature projection (see below) |
+
+### Quantum Endpoint — `POST /v1/ai/quantum/embed`
+
+Applies a VQE-inspired variational feature map to transformer embeddings,
+projecting them from the model's hidden dimension into a smaller Hilbert space.
+
+**Request**
+```json
+{
+  "texts":      ["string", ...],   // 1–32 input texts
+  "target_dim": 8,                 // 2–64, default 8
+  "num_layers": 3                  // 1–8 variational circuit layers
+}
+```
+
+**Response**
+```json
+{
+  "classical_embeddings": [[float, ...]],  // PCA baseline projections
+  "quantum_embeddings":   [[float, ...]],  // VQE-projected vectors
+  "fidelity":             0.94,            // mean overlap ∈ [0, 1]
+  "target_dim":           8,
+  "fallback_used":        true,            // true when Azure Quantum absent
+  "error":                null
+}
+```
+
+**Graceful fallback**: when `AZURE_QUANTUM_WORKSPACE_ID` is absent the
+simulation runs locally on CPU; `fallback_used` is `true`.  
+**Error shape on failure**: `{"error": "...", "fallback_used": bool}` with the
+appropriate HTTP status code.
 
 ## Inference Architecture
 

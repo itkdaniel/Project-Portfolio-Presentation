@@ -25,6 +25,37 @@ Standalone BM25 full-text search and BFS tag-graph recommendation microservice f
 | DELETE | `/v1/projects/{id}` | ✅ Admin | Delete project |
 | GET | `/v1/projects/{id}/related` | ❌ | BFS related projects |
 | GET | `/v1/search` | ❌ | Unified BM25+fuzzy search |
+| POST | `/v1/search/quantum/tune` | ❌ | Quantum-inspired BM25 parameter optimization (see below) |
+
+### Quantum Endpoint — `POST /v1/search/quantum/tune`
+
+Uses simulated quantum annealing over the BM25 `(k1, b)` parameter space to
+minimise mean-reciprocal-rank loss on the supplied training pairs.
+
+**Request**
+```json
+{
+  "training_pairs": [
+    {"query": "auth service", "relevant_doc_ids": ["proj-1", "proj-2"]}
+  ],
+  "num_steps": 400   // 50–2000, default 400
+}
+```
+
+**Response**
+```json
+{
+  "optimal_k1":    1.82,
+  "optimal_b":     0.61,
+  "quantum_ndcg":  0.78,
+  "baseline_ndcg": 0.71,   // BM25(k1=1.5, b=0.75) default score
+  "fallback_used": true,   // true when Azure Quantum absent
+  "error":         null
+}
+```
+
+**Graceful fallback**: when `AZURE_QUANTUM_WORKSPACE_ID` is absent the
+simulation runs locally; `fallback_used` is `true`.
 
 ### Query Parameters
 
