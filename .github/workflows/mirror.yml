@@ -1,0 +1,62 @@
+name: Mirror sub-apps to standalone repos
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  mirror:
+    name: Mirror ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: nexus-booking
+            prefix: apps/nexus-booking
+            repo: itkdaniel/nexus-booking
+          - name: nexus-tax
+            prefix: apps/nexus-tax
+            repo: itkdaniel/nexus-tax
+          - name: nexus-search
+            prefix: apps/nexus-search
+            repo: itkdaniel/nexus-search
+          - name: nexus-ai
+            prefix: apps/nexus-ai
+            repo: itkdaniel/nexus-ai
+          - name: nexus-quantum
+            prefix: apps/nexus-quantum
+            repo: itkdaniel/nexus-quantum
+          - name: nexus-crypto
+            prefix: apps/crypto-analytics
+            repo: itkdaniel/nexus-crypto
+
+    steps:
+      - name: Checkout monorepo (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+      - name: Split subtree and push to ${{ matrix.repo }}
+        env:
+          GH_MIRROR_PAT: ${{ secrets.GH_MIRROR_PAT }}
+        run: |
+          REMOTE_URL="https://x-access-token:${GH_MIRROR_PAT}@github.com/${{ matrix.repo }}.git"
+
+          # Split the sub-tree into a temporary branch
+          git subtree split \
+            --prefix="${{ matrix.prefix }}" \
+            --branch="mirror-${{ matrix.name }}-tmp"
+
+          # Force-push the split branch as main on the mirror repo
+          git push --force "${REMOTE_URL}" \
+            "mirror-${{ matrix.name }}-tmp:main"
+
+          # Clean up the temporary local branch
+          git branch -D "mirror-${{ matrix.name }}-tmp"

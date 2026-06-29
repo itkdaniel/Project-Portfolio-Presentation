@@ -217,6 +217,46 @@ The `tag-release.sh` script automatically converts the `[Unreleased]` section to
 
 ---
 
+## Repository Mirrors
+
+Each sub-app in this monorepo is automatically mirrored to its own standalone GitHub repository under [`itkdaniel/`](https://github.com/itkdaniel) on every push to `main`.
+
+### How it works
+
+The workflow at `.github/workflows/mirror.yml` runs a parallel matrix job — one job per sub-app. Each job:
+
+1. Checks out the monorepo with full history (`fetch-depth: 0`).
+2. Runs `git subtree split --prefix=<path>` to extract only the commits that touched that sub-app directory, producing a synthetic branch whose root is the sub-app folder.
+3. Force-pushes that branch as `main` on the corresponding mirror repo.
+
+### Mirror map
+
+| Monorepo path | Mirror repository |
+|---------------|-------------------|
+| `apps/nexus-booking` | [`itkdaniel/nexus-booking`](https://github.com/itkdaniel/nexus-booking) |
+| `apps/nexus-tax` | [`itkdaniel/nexus-tax`](https://github.com/itkdaniel/nexus-tax) |
+| `apps/nexus-search` | [`itkdaniel/nexus-search`](https://github.com/itkdaniel/nexus-search) |
+| `apps/nexus-ai` | [`itkdaniel/nexus-ai`](https://github.com/itkdaniel/nexus-ai) |
+| `apps/nexus-quantum` | [`itkdaniel/nexus-quantum`](https://github.com/itkdaniel/nexus-quantum) |
+| `apps/crypto-analytics` | [`itkdaniel/nexus-crypto`](https://github.com/itkdaniel/nexus-crypto) |
+
+### Required secret
+
+Add a fine-grained GitHub Personal Access Token (PAT) to the monorepo's Actions secrets as **`GH_MIRROR_PAT`**.
+
+The token must have **Contents: Read and Write** permission on each of the six mirror repositories listed above. No other permissions are required.
+
+To create the secret:
+1. Go to **Settings → Developer settings → Personal access tokens → Fine-grained tokens** in your GitHub account.
+2. Set resource owner to `itkdaniel`, select the six mirror repos, and grant **Contents: Read and Write**.
+3. In the monorepo go to **Settings → Secrets and variables → Actions → New repository secret** and save the token as `GH_MIRROR_PAT`.
+
+### Developing against a mirror
+
+The mirror repos are **read-only** from the perspective of contributors. All changes must go through PRs on the monorepo. Direct pushes to mirror repos will be overwritten on the next push to `main`.
+
+---
+
 ## Code Standards
 
 ### Python (sub-apps)
