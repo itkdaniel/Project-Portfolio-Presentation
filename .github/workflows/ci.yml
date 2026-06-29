@@ -231,11 +231,52 @@ jobs:
           path: test-results/e2e/
           retention-days: 14
 
+  # ── Quantum E2E smoke tests ───────────────────────────────────────────────
+  test-quantum-smoke:
+    name: Quantum Endpoints — E2E Smoke Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install nexus-shared package
+        run: pip install -e apps/_shared
+
+      - name: Smoke — nexus-ai quantum/embed
+        working-directory: apps/nexus-ai
+        run: |
+          pip install -e ".[dev]" anyio[trio] fakeredis torch numpy
+          pytest tests/e2e/test_quantum_smoke.py -v
+
+      - name: Smoke — nexus-search quantum/tune
+        working-directory: apps/nexus-search
+        run: |
+          pip install -e ".[dev]" anyio[trio] fakeredis aiosqlite
+          pytest tests/e2e/test_quantum_smoke.py -v
+
+      - name: Smoke — nexus-graph quantum/partition
+        working-directory: nexus-graph
+        run: |
+          pip install -e ".[dev]"
+          pytest tests/e2e/test_quantum_smoke.py -v
+
+      - name: Smoke — crypto-analytics quantum/optimize
+        working-directory: apps/crypto-analytics
+        run: |
+          pip install -e ".[dev]"
+          pytest tests/e2e/test_quantum_smoke.py -v
+
   # ── Docker build (validate only — no push) ───────────────────────────────
   build-docker:
     name: Docker Build (validate)
     runs-on: ubuntu-latest
-    needs: [test-node, test-python, test-e2e]
+    needs: [test-node, test-python, test-e2e, test-quantum-smoke]
     steps:
       - uses: actions/checkout@v4
 

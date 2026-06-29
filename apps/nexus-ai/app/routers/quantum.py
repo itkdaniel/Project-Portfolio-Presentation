@@ -24,9 +24,7 @@ from __future__ import annotations
 import hashlib
 import math
 import os
-import sys
 import uuid
-from pathlib import Path
 from typing import Any, List, Optional
 
 import anyio
@@ -36,8 +34,7 @@ import torch.nn.functional as F
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "_shared"))
-from quantum_utils import get_backend  # noqa: E402
+from nexus_shared.quantum_utils import get_backend
 
 router = APIRouter(prefix="/v1/ai/quantum", tags=["quantum"])
 

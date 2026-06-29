@@ -1,3 +1,7 @@
+# Build context must be the apps/ directory (one level above this file):
+#   docker build -f nexus-search/Dockerfile .
+# from the apps/ parent directory, or via docker-compose with context: ./apps
+
 # ── Stage 1: Builder ──────────────────────────────────────────────────────────
 FROM python:3.12-slim AS builder
 
@@ -8,7 +12,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libpq-dev curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+# Install the shared quantum package first (requires apps/ build context)
+COPY _shared/ /nexus_shared_src/
+RUN pip install --no-cache-dir --user /nexus_shared_src/
+
+# Install app dependencies
+COPY nexus-search/requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 
@@ -21,11 +30,11 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy installed packages from builder
+# Copy installed packages from builder (includes nexus-shared + app deps)
 COPY --from=builder /root/.local /root/.local
 
 # Copy application source
-COPY app/ ./app/
+COPY nexus-search/app/ ./app/
 
 ENV PATH=/root/.local/bin:$PATH
 ENV PYTHONPATH=/app

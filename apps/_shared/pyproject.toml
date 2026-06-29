@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nexus-shared"
+version = "0.1.0"
+description = "Shared quantum utilities for all NexusConsult sub-apps"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools]
+package-dir = {"nexus_shared" = ""}
+packages = ["nexus_shared"]

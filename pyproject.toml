@@ -17,6 +17,7 @@ dependencies = [
     "greenlet>=3.5.2",
     "httpx>=0.28.1",
     "hypothesis>=6.155.3",
+    "nexus-shared",
     "numpy>=2.4.6",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.1",
@@ -1155,3 +1156,9 @@ yta-general-utils = [{ index = "pytorch-cpu", marker = "platform_system == 'Linu
 zensvi = [{ index = "pytorch-cpu", marker = "platform_system == 'Linux'" }]
 zetascale = [{ index = "pytorch-cpu", marker = "platform_system == 'Linux'" }]
 zuko = [{ index = "pytorch-cpu", marker = "platform_system == 'Linux'" }]
+nexus-shared = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "apps/_shared",
+]

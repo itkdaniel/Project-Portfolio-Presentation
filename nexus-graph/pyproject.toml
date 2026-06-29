@@ -16,9 +16,13 @@ dependencies = [
     "pydantic>=2.7.0",
     "pydantic-settings>=2.2.1",
     "python-igraph>=0.11.5",
+    "nexus-shared",
 ]
 
 [project.optional-dependencies]
+quantum = [
+    "nexus-shared",
+]
 dev = [
     "pytest>=8.2.0",
     "pytest-asyncio>=0.23.6",
@@ -26,6 +30,7 @@ dev = [
     "pytest-cov>=5.0.0",
     "httpx>=0.27.0",
     "ruff>=0.4.4",
+    "nexus-shared",
 ]
 
 [tool.pytest.ini_options]

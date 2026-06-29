@@ -21,15 +21,12 @@ Response schema:
 """
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, model_validator
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "_shared"))
-from quantum_utils import get_backend  # noqa: E402
+from nexus_shared.quantum_utils import get_backend
 
 router = APIRouter(prefix="/v1/analytics/quantum", tags=["quantum"])
 

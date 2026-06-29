@@ -1,7 +1,17 @@
+# Build context must be the apps/ directory (one level above this file):
+#   docker build -f nexus-ai/Dockerfile .
+# from the apps/ parent directory, or via docker-compose with context: ./apps
+
 FROM python:3.11-slim AS builder
 
 WORKDIR /build
-COPY requirements.txt .
+
+# Install the shared quantum package first (requires apps/ build context)
+COPY _shared/ /nexus_shared_src/
+RUN pip install --no-cache-dir --prefix=/install /nexus_shared_src/
+
+# Install app dependencies
+COPY nexus-ai/requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 
@@ -11,7 +21,7 @@ RUN useradd -m -u 1001 nexus
 WORKDIR /app
 
 COPY --from=builder /install /usr/local
-COPY . .
+COPY nexus-ai/ .
 
 RUN chown -R nexus:nexus /app
 USER nexus
