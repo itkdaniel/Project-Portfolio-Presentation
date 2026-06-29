@@ -1,0 +1,58 @@
+name: CI — crypto-analytics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/crypto-analytics/**"
+      - "apps/_shared/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/crypto-analytics/**"
+      - "apps/_shared/**"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/crypto-analytics
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      - run: ruff check app/ tests/ --ignore E501,E402
+
+  test:
+    name: Tests (unit, BDD, regression)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/crypto-analytics
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install nexus-shared (local path)
+        run: pip install --no-cache-dir ../_shared
+
+      - name: Install app dev dependencies
+        run: pip install ".[dev]"
+
+      - name: Run unit tests
+        run: pytest tests/unit/ -v --tb=short
+
+      - name: Run BDD tests
+        run: pytest tests/bdd/ -v --tb=short
+
+      - name: Run regression tests
+        run: pytest tests/regression/ -v --tb=short
+

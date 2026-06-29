@@ -10,5 +10,7 @@ requires-python = ">=3.11"
 dependencies = []
 
 [tool.setuptools]
-package-dir = {"nexus_shared" = ""}
 packages = ["nexus_shared"]
+
+[tool.setuptools.package-dir]
+nexus_shared = ""

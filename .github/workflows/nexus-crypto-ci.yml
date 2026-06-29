@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - "apps/crypto-analytics/**"
+      - "apps/_shared/**"
       - ".github/workflows/nexus-crypto-ci.yml"
   pull_request:
     paths:
       - "apps/crypto-analytics/**"
+      - "apps/_shared/**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -57,6 +59,9 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      - name: Install nexus-shared (local path)
+        run: pip install --no-cache-dir ../_shared
+
       - name: Install dependencies
         run: pip install -e ".[dev]" pytest-html
 
@@ -95,6 +100,9 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      - name: Install nexus-shared (local path)
+        run: pip install --no-cache-dir ../_shared
+
       - name: Install dependencies
         run: pip install -e ".[dev]"
 
@@ -116,6 +124,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install nexus-shared (local path)
+        run: pip install --no-cache-dir ../_shared
 
       - name: Install dependencies
         run: pip install -e ".[dev]"

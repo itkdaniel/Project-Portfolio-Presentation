@@ -10,6 +10,9 @@ jobs:
   unit-tests:
     name: Unit Tests (algorithms, BM25, TagGraph)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/nexus-search
     steps:
       - uses: actions/checkout@v4
 
@@ -17,6 +20,9 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
+
+      - name: Install nexus-shared (local path)
+        run: pip install --no-cache-dir ../_shared
 
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
@@ -27,12 +33,17 @@ jobs:
   ddt-tests:
     name: DDT — Hypothesis Property Tests
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/nexus-search
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
+      - name: Install nexus-shared (local path)
+        run: pip install --no-cache-dir ../_shared
       - run: pip install -r requirements-dev.txt
       - name: Run Hypothesis DDT tests
         run: pytest tests/ddt/ -v --tb=short
@@ -40,12 +51,17 @@ jobs:
   bdd-tests:
     name: BDD — pytest-bdd Scenarios
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/nexus-search
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
+      - name: Install nexus-shared (local path)
+        run: pip install --no-cache-dir ../_shared
       - run: pip install -r requirements-dev.txt
       - name: Run BDD tests
         run: pytest tests/bdd/ -v --tb=short
@@ -53,12 +69,17 @@ jobs:
   regression-tests:
     name: Regression — API Contract Tests
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/nexus-search
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
+      - name: Install nexus-shared (local path)
+        run: pip install --no-cache-dir ../_shared
       - run: pip install -r requirements-dev.txt
       - name: Run regression tests
         run: pytest tests/regression/ -v --tb=short
@@ -66,12 +87,17 @@ jobs:
   e2e-tests:
     name: E2E — Full Search Flow Tests
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/nexus-search
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
+      - name: Install nexus-shared (local path)
+        run: pip install --no-cache-dir ../_shared
       - run: pip install -r requirements-dev.txt
       - name: Run E2E tests
         run: pytest tests/e2e/ -v --tb=short
@@ -82,4 +108,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build Docker image
-        run: docker build -t nexus-search:ci .
+        run: docker build -f nexus-search/Dockerfile -t nexus-search:ci apps
