@@ -1,13 +1,14 @@
 import { eq, desc, and, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, projects, bookings, inquiries, userSettings, emailConfig, resumes,
+  users, projects, bookings, inquiries, userSettings, emailConfig, quantumConfig, resumes,
   type User, type InsertUser, type UpdateProfile,
   type Project, type InsertProject,
   type Booking, type InsertBooking,
   type Inquiry, type InsertInquiry,
   type UserSettings, type InsertUserSettings, type UpdateUserSettings,
   type EmailConfig, type UpdateEmailConfig,
+  type QuantumConfig, type UpdateQuantumConfig,
   type Resume, type UpdateResume,
   taxPeriods, federalForms, stateForms, taxBrackets, standardDeductions,
   specialTaxRates, taxQuestions, formRequirementRules, questionnaireSessions,
@@ -60,6 +61,10 @@ export interface IStorage {
   // Email Config (admin)
   getEmailConfig(): Promise<EmailConfig | undefined>;
   upsertEmailConfig(data: UpdateEmailConfig): Promise<EmailConfig>;
+
+  // Quantum Config (admin)
+  getQuantumConfig(): Promise<QuantumConfig | undefined>;
+  upsertQuantumConfig(data: UpdateQuantumConfig): Promise<QuantumConfig>;
 
   // Tax Assistant
   getTaxPeriods(): Promise<TaxPeriod[]>;
@@ -274,6 +279,30 @@ export class DatabaseStorage implements IStorage {
     }
     const [created] = await db
       .insert(emailConfig)
+      .values(data as any)
+      .returning();
+    return created;
+  }
+
+  // ── Quantum Config ─────────────────────────────────────────────────────────
+
+  async getQuantumConfig(): Promise<QuantumConfig | undefined> {
+    const [cfg] = await db.select().from(quantumConfig).limit(1);
+    return cfg;
+  }
+
+  async upsertQuantumConfig(data: UpdateQuantumConfig): Promise<QuantumConfig> {
+    const existing = await this.getQuantumConfig();
+    if (existing) {
+      const [updated] = await db
+        .update(quantumConfig)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(quantumConfig.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db
+      .insert(quantumConfig)
       .values(data as any)
       .returning();
     return created;

@@ -54,14 +54,17 @@ def _make_lifespan(settings: Settings):
 
         configure_engine(settings)
 
-        from app.services.azure_quantum import configure_azure
-        configure_azure(settings)
+        # Configure the hot-reload provider so it knows where to find the main app.
+        from app.quantum_config_provider import configure_provider
+        configure_provider(portfolio_url=settings.portfolio_url)
+
+        # Initial Azure client setup — the provider will refresh from DB on first request.
+        from app.services.azure_quantum import get_azure_service
+        svc = get_azure_service()
 
         await create_tables()
 
-        azure_mode = (
-            "azure" if settings.azure_quantum_workspace_id else "local_simulation"
-        )
+        azure_mode = "azure" if svc.is_available else "local_simulation"
         logger.info("nexus-quantum ready", mode=azure_mode)
 
         yield
@@ -144,6 +147,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 {"method": "POST",   "path": "/v1/quantum/circuits",             "auth": False, "description": "Save a circuit definition"},
                 {"method": "GET",    "path": "/v1/quantum/circuits",             "auth": False, "description": "List saved circuits"},
                 {"method": "GET",    "path": "/v1/quantum/circuits/{id}",        "auth": False, "description": "Retrieve a circuit definition"},
+                {"method": "POST",   "path": "/v1/quantum/config/reload",         "auth": False, "description": "Invalidate credential cache (hot-reload)"},
             ],
         )
 
@@ -151,6 +155,26 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app.include_router(simulate_router)
     app.include_router(optimize_router)
     app.include_router(circuits_router)
+
+    @app.post("/v1/quantum/config/reload", tags=["meta"])
+    async def reload_config():
+        """
+        Invalidate the hot-reload credential cache immediately.
+
+        The nexus-quantum service normally refreshes Azure credentials from the
+        DB-backed API every 30 s.  Calling this endpoint forces a fresh fetch on
+        the very next request — useful after an admin saves new credentials in the
+        Settings UI so changes take effect without waiting for the TTL.
+        """
+        from app.quantum_config_provider import invalidate_cache
+        from app.services.azure_quantum import get_azure_service
+        invalidate_cache()
+        svc = get_azure_service()
+        return {
+            "status": "ok",
+            "azure_connected": svc.is_available,
+            "message": "Credential cache invalidated; new config active.",
+        }
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException):

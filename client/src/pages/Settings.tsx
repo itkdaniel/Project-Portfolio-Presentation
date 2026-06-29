@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
@@ -40,6 +40,15 @@ interface UserSettingsData {
   notifyProjectUpdates: boolean;
   notifyWeeklyDigest: boolean;
   notifySecurityAlerts: boolean;
+}
+
+interface QuantumConfigData {
+  workspaceId: string;
+  subscriptionId: string;
+  resourceGroup: string;
+  workspaceName: string;
+  location: string;
+  enabled: boolean;
 }
 
 interface EmailConfigData {
@@ -139,6 +148,22 @@ export default function Settings() {
     queryFn:  () => apiGet("/api/settings/email-config"),
     enabled:  isAuthenticated,
     retry: false,
+  });
+
+  const { data: quantumCfg, isLoading: quantumLoading } = useQuery<QuantumConfigData>({
+    queryKey: ["/api/settings/quantum-config"],
+    queryFn:  () => apiGet("/api/settings/quantum-config"),
+    enabled:  isAuthenticated,
+    retry: false,
+  });
+
+  const patchQuantumCfg = useMutation({
+    mutationFn: (data: Partial<QuantumConfigData>) => apiPatch("/api/settings/quantum-config", data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/settings/quantum-config"] });
+      toast({ title: "Azure Quantum config saved" });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const patchSettings = useMutation({
@@ -252,7 +277,18 @@ export default function Settings() {
                     )
                   )}
                   {activeSection === "integrations" && settings && (
-                    <IntegrationsSection settings={settings} onSave={data => patchSettings.mutate(data)} saving={patchSettings.isPending} />
+                    quantumLoading ? (
+                      <div className="flex items-center gap-2 text-muted-foreground"><RefreshCw className="w-4 h-4 animate-spin" /> Loading…</div>
+                    ) : (
+                      <IntegrationsSection
+                        settings={settings}
+                        onSave={data => patchSettings.mutate(data)}
+                        saving={patchSettings.isPending}
+                        quantumCfg={quantumCfg}
+                        onSaveQuantum={data => patchQuantumCfg.mutate(data)}
+                        savingQuantum={patchQuantumCfg.isPending}
+                      />
+                    )
                   )}
                 </>
               )}
@@ -1276,12 +1312,44 @@ function AIAccessCard() {
 
 // ── Integrations Section ──────────────────────────────────────────────────────
 
-function IntegrationsSection({ settings, onSave, saving }: { settings: UserSettingsData; onSave: (d: any) => void; saving: boolean }) {
+function IntegrationsSection({
+  settings, onSave, saving,
+  quantumCfg, onSaveQuantum, savingQuantum,
+}: {
+  settings: UserSettingsData;
+  onSave: (d: any) => void;
+  saving: boolean;
+  quantumCfg?: QuantumConfigData;
+  onSaveQuantum: (d: any) => void;
+  savingQuantum: boolean;
+}) {
   const [form, setForm] = useState({
     githubUrl:   settings.githubUrl   ?? "https://github.com/itkdaniel",
     linkedinUrl: settings.linkedinUrl ?? "https://linkedin.com/in/itkdaniel",
     websiteUrl:  settings.websiteUrl  ?? "",
   });
+
+  const [qForm, setQForm] = useState<QuantumConfigData>({
+    workspaceId:    quantumCfg?.workspaceId    ?? "",
+    subscriptionId: quantumCfg?.subscriptionId ?? "",
+    resourceGroup:  quantumCfg?.resourceGroup  ?? "",
+    workspaceName:  quantumCfg?.workspaceName  ?? "",
+    location:       quantumCfg?.location       ?? "",
+    enabled:        quantumCfg?.enabled        ?? false,
+  });
+
+  useEffect(() => {
+    if (quantumCfg) {
+      setQForm({
+        workspaceId:    quantumCfg.workspaceId,
+        subscriptionId: quantumCfg.subscriptionId,
+        resourceGroup:  quantumCfg.resourceGroup,
+        workspaceName:  quantumCfg.workspaceName,
+        location:       quantumCfg.location,
+        enabled:        quantumCfg.enabled,
+      });
+    }
+  }, [quantumCfg]);
 
   return (
     <div className="space-y-6">
@@ -1335,6 +1403,78 @@ function IntegrationsSection({ settings, onSave, saving }: { settings: UserSetti
       <AIAccessCard />
 
       <SaveButton onClick={() => onSave(form)} saving={saving} />
+
+      <Separator className="opacity-10" />
+
+      {/* Azure Quantum Configuration */}
+      <div className="space-y-1">
+        <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+          <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-bold">Q</span>
+          Azure Quantum Workspace
+        </h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          Connect a real Azure Quantum workspace. The nexus-quantum service reads these credentials on each request — no container restart needed.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between p-4 rounded-lg bg-background/50 border border-white/5">
+        <div>
+          <p className="font-medium text-sm">Enable Azure Quantum</p>
+          <p className="text-xs text-muted-foreground">When disabled, the service falls back to the built-in simulator</p>
+        </div>
+        <Switch data-testid="switch-quantumEnabled" checked={qForm.enabled}
+          onCheckedChange={v => setQForm(f => ({ ...f, enabled: v }))} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="quantumSubscriptionId">Subscription ID</Label>
+          <Input id="quantumSubscriptionId" data-testid="input-quantumSubscriptionId"
+            value={qForm.subscriptionId}
+            onChange={e => setQForm(f => ({ ...f, subscriptionId: e.target.value }))}
+            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            className="bg-background/50 font-mono text-xs" />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="quantumResourceGroup">Resource Group</Label>
+          <Input id="quantumResourceGroup" data-testid="input-quantumResourceGroup"
+            value={qForm.resourceGroup}
+            onChange={e => setQForm(f => ({ ...f, resourceGroup: e.target.value }))}
+            placeholder="my-resource-group"
+            className="bg-background/50" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="quantumWorkspaceName">Workspace Name</Label>
+          <Input id="quantumWorkspaceName" data-testid="input-quantumWorkspaceName"
+            value={qForm.workspaceName}
+            onChange={e => setQForm(f => ({ ...f, workspaceName: e.target.value }))}
+            placeholder="my-quantum-workspace"
+            className="bg-background/50" />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="quantumLocation">Location</Label>
+          <Input id="quantumLocation" data-testid="input-quantumLocation"
+            value={qForm.location}
+            onChange={e => setQForm(f => ({ ...f, location: e.target.value }))}
+            placeholder="eastus"
+            className="bg-background/50" />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="quantumWorkspaceId">Workspace ID</Label>
+        <Input id="quantumWorkspaceId" data-testid="input-quantumWorkspaceId"
+          value={qForm.workspaceId}
+          onChange={e => setQForm(f => ({ ...f, workspaceId: e.target.value }))}
+          placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+          className="bg-background/50 font-mono text-xs" />
+        <p className="text-xs text-muted-foreground">Found in the Azure Portal under your Quantum workspace → Overview.</p>
+      </div>
+
+      <SaveButton onClick={() => onSaveQuantum(qForm)} saving={savingQuantum} label="Save Quantum Config" />
     </div>
   );
 }

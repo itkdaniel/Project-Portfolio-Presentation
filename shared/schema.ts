@@ -242,6 +242,32 @@ export type InsertEmailConfig = z.infer<typeof insertEmailConfigSchema>;
 export type UpdateEmailConfig = z.infer<typeof updateEmailConfigSchema>;
 export type EmailConfig = typeof emailConfig.$inferSelect;
 
+// ── Azure Quantum Configuration ────────────────────────────────────────────
+// Single admin-controlled row for Azure Quantum workspace credentials.
+// Hot-loaded by the nexus-quantum service on each request so changes take
+// effect without a container restart.
+export const quantumConfig = pgTable("quantum_config", {
+  id:             serial("id").primaryKey(),
+
+  // Azure workspace coordinates
+  workspaceId:    text("workspace_id").notNull().default(""),
+  subscriptionId: text("subscription_id").notNull().default(""),
+  resourceGroup:  text("resource_group").notNull().default(""),
+  workspaceName:  text("workspace_name").notNull().default(""),
+  location:       text("location").notNull().default(""),
+
+  // Feature toggle — when false, service falls back to simulator
+  enabled:        boolean("enabled").notNull().default(false),
+
+  updatedAt:      timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertQuantumConfigSchema = createInsertSchema(quantumConfig).omit({ id: true, updatedAt: true });
+export const updateQuantumConfigSchema = insertQuantumConfigSchema.partial();
+export type InsertQuantumConfig = z.infer<typeof insertQuantumConfigSchema>;
+export type UpdateQuantumConfig = z.infer<typeof updateQuantumConfigSchema>;
+export type QuantumConfig = typeof quantumConfig.$inferSelect;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // TAX ASSISTANT SYSTEM
 // ═══════════════════════════════════════════════════════════════════════════

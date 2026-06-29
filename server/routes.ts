@@ -8,7 +8,7 @@ import { db } from "./db";
 import { users } from "@shared/schema";
 import {
   insertProjectSchema, insertBookingSchema, insertInquirySchema, loginSchema,
-  updateUserSettingsSchema, updateEmailConfigSchema, updateProfileSchema, updateResumeSchema, registerSchema,
+  updateUserSettingsSchema, updateEmailConfigSchema, updateQuantumConfigSchema, updateProfileSchema, updateResumeSchema, registerSchema,
   insertScopeRequestSchema, updateScopeRequestSchema, updateNotifPrefsSchema,
 } from "@shared/schema";
 import { grantedScopes } from "@shared/schema";
@@ -533,6 +533,58 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const data = updateEmailConfigSchema.parse(req.body);
       const updated = await storage.upsertEmailConfig(data);
+      return res.json(updated);
+    } catch (e) {
+      const { status, body } = zodErr(e);
+      return res.status(status).json(body);
+    }
+  });
+
+  // GET  /api/settings/quantum-config  — admin: get Azure Quantum workspace config
+  app.get("/api/settings/quantum-config", requireAdmin as any, async (_req, res) => {
+    let cfg = await storage.getQuantumConfig();
+    if (!cfg) {
+      cfg = await storage.upsertQuantumConfig({});
+    }
+    return res.json(cfg);
+  });
+
+  // GET /api/internal/quantum-config  — service-to-service: nexus-quantum reads DB-backed credentials.
+  // Protected by X-Service-Key header (NEXUS_INTERNAL_API_KEY env var).
+  // Returns credentials only when `enabled=true`; falls back to empty fields otherwise.
+  app.get("/api/internal/quantum-config", async (req: Request, res: Response) => {
+    const serviceKey = process.env.NEXUS_INTERNAL_API_KEY || "";
+    const provided = (req.headers["x-service-key"] as string) || "";
+    if (!serviceKey || provided !== serviceKey) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    let cfg = await storage.getQuantumConfig();
+    if (!cfg) {
+      cfg = await storage.upsertQuantumConfig({});
+    }
+    // When disabled, return empty strings so the quantum service falls back to simulator.
+    if (!cfg.enabled) {
+      return res.json({
+        workspaceId: "", subscriptionId: "", resourceGroup: "",
+        workspaceName: "", location: cfg.location || "eastus", enabled: false,
+      });
+    }
+    return res.json(cfg);
+  });
+
+  // PATCH /api/settings/quantum-config  — admin: update Azure Quantum workspace config
+  app.patch("/api/settings/quantum-config", requireAdmin as any, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const data = updateQuantumConfigSchema.parse(req.body);
+      const updated = await storage.upsertQuantumConfig(data);
+
+      // Fire-and-forget: tell the nexus-quantum service to refresh its credential cache
+      // so new credentials take effect immediately (< 1 s) rather than after the 30-s TTL.
+      const quantumServiceUrl = process.env.QUANTUM_SERVICE_URL || "http://localhost:8200";
+      fetch(`${quantumServiceUrl}/v1/quantum/config/reload`, { method: "POST" }).catch(
+        (err: unknown) => console.log("[quantum-config] reload ping failed (service may be offline):", err)
+      );
+
       return res.json(updated);
     } catch (e) {
       const { status, body } = zodErr(e);
