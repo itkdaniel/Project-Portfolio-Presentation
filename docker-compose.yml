@@ -158,6 +158,31 @@ services:
       - nexus-quantum
     logging: *default-logging
 
+  # ── Nexus Analytics (Platform API analytics microservice) ──────────────────
+  nexus-analytics:
+    build:
+      context: ./apps
+      dockerfile: nexus-analytics/Dockerfile
+    container_name: nexus_analytics
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${PGUSER:-nexus}:${PGPASSWORD:-nexuspassword}@postgres:5432/${PGDATABASE:-nexusdb}
+      NEXUS_ANALYTICS_URL: http://nexus-analytics:8300
+      LOG_LEVEL: INFO
+      LOG_FILE: logs/nexus-analytics.jsonl
+      CORS_ORIGINS: '["*"]'
+    ports:
+      - "8300:8300"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8300/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging: *default-logging
+
   # ── Nexus Quantum (Azure Quantum microservice) ─────────────────────────────
   nexus-quantum:
     build:

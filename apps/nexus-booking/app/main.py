@@ -38,13 +38,21 @@ from app.services.availability import get_availability_index
 from app.auth import configure_auth
 from app.services.email import configure_email
 
-structlog.configure(
-    processors=[
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.dev.ConsoleRenderer(),
-    ]
-)
-logger = structlog.get_logger("nexus-booking")
+# Color-coded console + JSON file logging via shared logging_config.
+# Console: DEBUG=cyan, INFO=green, WARNING=yellow, ERROR=red, CRITICAL=magenta
+# File:    logs/nexus-booking.jsonl (rotating, 10 MB, 5 backups)
+try:
+    from nexus_shared.logging_config import configure_logging, get_logger
+    configure_logging("nexus-booking", log_file="logs/nexus-booking.jsonl")
+except ImportError:
+    structlog.configure(
+        processors=[
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.dev.ConsoleRenderer(),
+        ]
+    )
+    get_logger = structlog.get_logger
+logger = get_logger("nexus-booking")
 
 _start_time = time.monotonic()
 

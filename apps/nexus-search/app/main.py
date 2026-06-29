@@ -49,7 +49,12 @@ from app.routers.projects import router as projects_router
 from app.routers.search import router as search_router
 from app.routers.quantum import router as quantum_router
 
-logger = structlog.get_logger(__name__)
+try:
+    from nexus_shared.logging_config import configure_logging, get_logger as _get_logger
+    configure_logging("nexus-search", log_file="logs/nexus-search.jsonl")
+    logger = _get_logger(__name__)
+except ImportError:
+    logger = structlog.get_logger(__name__)
 
 _start_time: float = 0.0
 

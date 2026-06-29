@@ -346,6 +346,31 @@ export function buildRegistry(): SubAppInfo[] {
       ],
       githubUrl: "https://github.com/itkdaniel/nexus-quantum",
     },
+
+    // ── Nexus Analytics (Platform API analytics) ─────────────────────────────
+    {
+      name: "analytics",
+      label: "Nexus Analytics",
+      description:
+        "Platform API analytics microservice — records API call events from all NexusConsult services and exposes per-service aggregate stats, top-endpoint rankings, error-rate breakdowns, and time-bucketed call/latency timeseries.",
+      baseUrl: resolveUrl("SUB_APP_ANALYTICS_URL", "NEXUS_ANALYTICS_URL", 8300),
+      port: 8300,
+      healthPath: "/health",
+      openApiPath: "/openapi.json",
+      tags: ["FastAPI", "Python", "Analytics", "Metrics", "Timeseries"],
+      matchKeys: ["analytics", "metrics", "timeseries", "latency", "errors", "events", "monitoring"],
+      endpoints: [
+        { method: "GET",  path: "/health",                           description: "Liveness probe",                    auth: false },
+        { method: "GET",  path: "/info",                             description: "Service metadata",                  auth: false },
+        { method: "GET",  path: "/openapi.json",                     description: "OpenAPI spec",                      auth: false },
+        { method: "POST", path: "/v1/analytics/events",              description: "Record one API call event",         auth: false },
+        { method: "GET",  path: "/v1/analytics/summary",             description: "Per-service aggregate stats",       auth: false },
+        { method: "GET",  path: "/v1/analytics/top-endpoints",       description: "Top N endpoints by call volume",    auth: false },
+        { method: "GET",  path: "/v1/analytics/errors",              description: "Error-rate breakdown per service",  auth: false },
+        { method: "GET",  path: "/v1/analytics/timeseries",          description: "Time-bucketed call/error counts",   auth: false },
+      ],
+      githubUrl: "https://github.com/itkdaniel/nexus-analytics",
+    },
   ];
 }
 

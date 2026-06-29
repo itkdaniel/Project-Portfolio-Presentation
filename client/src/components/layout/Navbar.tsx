@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText, Activity, BookOpen, LogIn, UserPlus, LogOut, ClipboardCheck, Shield, GitBranch } from "lucide-react";
+import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText, Activity, BookOpen, LogIn, UserPlus, LogOut, ClipboardCheck, Shield, GitBranch, Search, Brain, BarChart2, Atom } from "lucide-react";
 import { NotificationBell } from "./NotificationBell";
 
 interface MeUser { id: string; username: string; email: string; role?: string; fullName?: string; profilePictureUrl?: string; }
@@ -84,11 +84,20 @@ export function Navbar() {
           <Link href="/tests" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-tests">
             <FlaskConical className="w-4 h-4" /> Tests
           </Link>
+          <Link href="/search" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-search">
+            <Search className="w-4 h-4" /> Search
+          </Link>
+          <Link href="/ai" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-ai">
+            <Brain className="w-4 h-4" /> AI
+          </Link>
+          <Link href="/quantum" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-quantum">
+            <Atom className="w-4 h-4" /> Quantum
+          </Link>
+          <Link href="/analytics" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-analytics">
+            <BarChart2 className="w-4 h-4" /> Analytics
+          </Link>
           <Link href="/tax" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-tax">
             <FileText className="w-4 h-4" /> Tax Forms
-          </Link>
-          <Link href="/status" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-status">
-            <Activity className="w-4 h-4" /> Status
           </Link>
           <Link href="/resume" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-resume">
             <BookOpen className="w-4 h-4" /> Resumé
@@ -164,11 +173,20 @@ export function Navbar() {
           <Link href="/tests" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
             <FlaskConical className="w-4 h-4" /> Tests
           </Link>
+          <Link href="/search" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-search-mobile">
+            <Search className="w-4 h-4" /> Search
+          </Link>
+          <Link href="/ai" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-ai-mobile">
+            <Brain className="w-4 h-4" /> AI
+          </Link>
+          <Link href="/quantum" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-quantum-mobile">
+            <Atom className="w-4 h-4" /> Quantum
+          </Link>
+          <Link href="/analytics" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-analytics-mobile">
+            <BarChart2 className="w-4 h-4" /> Analytics
+          </Link>
           <Link href="/tax" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
             <FileText className="w-4 h-4" /> Tax Forms
-          </Link>
-          <Link href="/status" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
-            <Activity className="w-4 h-4" /> Status
           </Link>
           <Link href="/resume" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-resume-mobile">
             <BookOpen className="w-4 h-4" /> Resumé

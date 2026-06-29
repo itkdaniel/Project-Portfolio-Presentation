@@ -10,6 +10,26 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.6.0] — 2026-06-29
+
+### Added
+- **nexus-analytics** microservice (port 8300): FastAPI service tracking API events with `POST /v1/analytics/events`, `GET /v1/analytics/summary`, `GET /v1/analytics/timeseries`, `GET /v1/analytics/top-endpoints`, `GET /v1/analytics/errors` endpoints; full test suite (42 unit + 6 BDD + 5 regression), Dockerfile, CI workflow
+- **Shared color-coded structured logging** (`apps/_shared/logging_config.py`): ANSI-colored console output (DEBUG=cyan, INFO=green, WARNING=yellow, ERROR=red, CRITICAL=magenta) + rotating JSON-lines file output for all Python sub-apps
+- **`/search` page** — BM25 full-text search UI proxying to nexus-search (port 8002): search box, tag filter pills, result cards with relevance scores, related projects panel, offline banner
+- **`/ai` page** — NexusAI transformer playground UI proxying to nexus-ai (port 8001): 5-tab interface for Classify / Embed / Similarity / Fill-Mask / Status with vector visualization for embeddings
+- **`/analytics` page** — Platform analytics dashboard connecting to nexus-analytics (port 8300): timeseries chart, top-endpoints bar chart, error breakdown, real-time event counters
+- `/quantum`, `/search`, `/ai`, `/analytics` links added to Navbar (desktop + mobile)
+- nexus-analytics registered in API gateway (`server/gateway.ts`), docker-compose.yml, docker-compose.dev.yml, and nginx config
+- Architecture and Docs pages updated: service count 12→13, nexus-analytics node in all Mermaid diagrams, port 8300 in registry
+
+### Changed
+- All Python sub-app services (nexus-booking, nexus-tax, nexus-search, nexus-ai, nexus-quantum, _template) updated to use shared `configure_logging()` with graceful fallback to inline structlog
+- Platform version bumped to `1.6.0` in `package.json`
+- DocsPage sidebar now has dedicated "Nexus Analytics" section; `SUB_APPS.slice` indices adjusted for 13-entry array
+- `tests/unit/pages.test.ts` updated: sub-app count assertion 12→13, expected names list includes `"analytics"`
+
+---
+
 ## [1.5.0] — 2024-06-28
 
 ### Added

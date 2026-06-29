@@ -45,7 +45,12 @@ from app.config import Settings, get_settings
 from app.routers.ai import router as ai_router
 from app.routers.quantum import router as quantum_router
 
-logger = structlog.get_logger(__name__)
+try:
+    from nexus_shared.logging_config import configure_logging, get_logger as _get_logger
+    configure_logging("nexus-ai", log_file="logs/nexus-ai.jsonl")
+    logger = _get_logger(__name__)
+except ImportError:
+    logger = structlog.get_logger(__name__)
 
 DOMAIN_CORPUS = [
     "microservices architecture docker kubernetes devops automation consulting",

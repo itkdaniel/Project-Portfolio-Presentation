@@ -28,13 +28,18 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.config import Settings, get_settings
 from app.database import configure_engine, create_tables, dispose_engine
 
-structlog.configure(
-    processors=[
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.dev.ConsoleRenderer(),
-    ]
-)
-logger = structlog.get_logger("nexus-subapp")
+try:
+    from nexus_shared.logging_config import configure_logging, get_logger
+    configure_logging("nexus-subapp", log_file="logs/nexus-subapp.jsonl")
+except ImportError:
+    structlog.configure(
+        processors=[
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.dev.ConsoleRenderer(),
+        ]
+    )
+    get_logger = structlog.get_logger
+logger = get_logger("nexus-subapp")
 _start_time = time.monotonic()
 
 

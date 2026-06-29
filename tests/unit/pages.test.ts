@@ -87,21 +87,21 @@ describe("DocsPage — static structure", () => {
     expect(src).toContain("export default function DocsPage");
   });
 
-  it("has exactly 12 sub-app entries in SUB_APPS (one per microservice)", () => {
+  it("has exactly 13 sub-app entries in SUB_APPS (one per microservice)", () => {
     const subAppsBlockMatch = src.match(/const SUB_APPS: SubApp\[\] = \[([\s\S]*?)\];/);
     expect(subAppsBlockMatch).not.toBeNull();
     const block = subAppsBlockMatch![1];
     // Each sub-app has a unique `port:` field
     const portMatches = block.match(/port: \d+/g);
     expect(portMatches).not.toBeNull();
-    expect(portMatches!.length).toBe(12);
+    expect(portMatches!.length).toBe(13);
   });
 
   it("SUB_APPS contains all expected microservice names", () => {
     const expectedNames = [
       "booking", "tax", "search", "ai", "scraper", "graph",
       "crypto", "crypto-market", "crypto-wallet", "crypto-dex", "crypto-analytics",
-      "quantum",
+      "quantum", "analytics",
     ];
     for (const name of expectedNames) {
       expect(src).toContain(`name: "${name}"`);
@@ -230,14 +230,14 @@ describe("ArchitecturePage — static structure", () => {
     expect(src).toContain('id="infrastructure"');
   });
 
-  it("SYSTEM_CARDS covers all 12 services in description", () => {
-    expect(src).toContain("12 standalone sub-app services");
+  it("SYSTEM_CARDS covers all 13 services in description", () => {
+    expect(src).toContain("13 standalone sub-app services");
   });
 
-  it("Service Port Registry covers all 13 services (5000 + 12 sub-apps)", () => {
+  it("Service Port Registry covers all 14 services (5000 + 13 sub-apps)", () => {
     const portEntries = src.match(/port: "8[0-9]{3}"/g);
     expect(portEntries).not.toBeNull();
-    expect(portEntries!.length).toBeGreaterThanOrEqual(12);
+    expect(portEntries!.length).toBeGreaterThanOrEqual(13);
   });
 
   it("infrastructure tab lists docker-compose.yml", () => {

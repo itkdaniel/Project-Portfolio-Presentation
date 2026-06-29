@@ -36,13 +36,18 @@ from app.routers.questions import router as questions_router
 from app.routers.sessions import router as sessions_router
 from app.routers.admin import periods_router, admin_router
 
-structlog.configure(
-    processors=[
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.dev.ConsoleRenderer(),
-    ]
-)
-logger = structlog.get_logger("nexus-tax")
+try:
+    from nexus_shared.logging_config import configure_logging, get_logger
+    configure_logging("nexus-tax", log_file="logs/nexus-tax.jsonl")
+except ImportError:
+    structlog.configure(
+        processors=[
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.dev.ConsoleRenderer(),
+        ]
+    )
+    get_logger = structlog.get_logger
+logger = get_logger("nexus-tax")
 
 _start_time = time.monotonic()
 

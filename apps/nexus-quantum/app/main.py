@@ -31,13 +31,18 @@ from app.routers.jobs import router as jobs_router
 from app.routers.optimize import router as optimize_router
 from app.routers.simulate import router as simulate_router
 
-structlog.configure(
-    processors=[
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.dev.ConsoleRenderer(),
-    ]
-)
-logger = structlog.get_logger("nexus-quantum")
+try:
+    from nexus_shared.logging_config import configure_logging, get_logger
+    configure_logging("nexus-quantum", log_file="logs/nexus-quantum.jsonl")
+except ImportError:
+    structlog.configure(
+        processors=[
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.dev.ConsoleRenderer(),
+        ]
+    )
+    get_logger = structlog.get_logger
+logger = get_logger("nexus-quantum")
 
 _start_time = time.monotonic()
 

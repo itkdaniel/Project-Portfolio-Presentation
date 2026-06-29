@@ -18,6 +18,9 @@ import AdminScopesPage from "@/pages/AdminScopes";
 import DocsPage from "@/pages/DocsPage";
 import ArchitecturePage from "@/pages/ArchitecturePage";
 import QuantumPage from "@/pages/QuantumPage";
+import SearchPage from "@/pages/SearchPage";
+import AIPage from "@/pages/AIPage";
+import AnalyticsPage from "@/pages/AnalyticsPage";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -38,6 +41,9 @@ function Router() {
       <Route path="/docs" component={DocsPage}/>
       <Route path="/architecture" component={ArchitecturePage}/>
       <Route path="/quantum" component={QuantumPage}/>
+      <Route path="/search" component={SearchPage}/>
+      <Route path="/ai" component={AIPage}/>
+      <Route path="/analytics" component={AnalyticsPage}/>
       <Route component={NotFound} />
     </Switch>
   );
