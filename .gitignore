@@ -3,4 +3,8 @@ dist
 .DS_Store
 server/public
 vite.config.ts.*
-*.tar.gztest-results/unit-results.json
+*.tar.gz
+test-results/unit-results.json
+*.egg-info/
+__pycache__/
+*.pyc
