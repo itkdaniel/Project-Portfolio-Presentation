@@ -9,6 +9,7 @@ import {
   Network, Layers, Bitcoin, TrendingUp, Wallet, ArrowLeftRight,
   BarChart3, Play, Loader2, ChevronDown, ChevronUp, Link as LinkIcon,
   Lock, ExternalLink, Github, Activity, Cpu, CheckCircle2, XCircle, Clock, Atom,
+  FlaskConical, Zap, TrendingDown, GitBranch, LineChart,
 } from "lucide-react";
 
 // ── Core API definitions ──────────────────────────────────────────────────────
@@ -386,6 +387,546 @@ function SubAppSection({ app }: { app: SubApp }) {
   );
 }
 
+// ── QuantumExperimentsSection ─────────────────────────────────────────────────
+
+interface QuantumEndpointDef {
+  id: string;
+  label: string;
+  service: string;
+  port: number;
+  proxyPath: string;
+  icon: React.ReactNode;
+  iconColor: string;
+  accent: string;
+  accentBg: string;
+  description: string;
+  algorithm: string;
+  defaultBody: string;
+  quantumResultLabel: string;
+  classicalResultLabel: string;
+  fidelityLabel: string;
+}
+
+const QUANTUM_ENDPOINTS: QuantumEndpointDef[] = [
+  {
+    id: "embed",
+    label: "Quantum Embed",
+    service: "Nexus AI",
+    port: 8001,
+    proxyPath: "/api/apps/ai/proxy/v1/ai/quantum/embed",
+    icon: <Brain className="w-4 h-4" />,
+    iconColor: "text-amber-400",
+    accent: "text-amber-400",
+    accentBg: "bg-amber-400/10 border-amber-400/20",
+    description: "VQE-inspired quantum feature map that embeds text into a high-dimensional quantum Hilbert space, then compares against a classical PCA baseline.",
+    algorithm: "VQE / Quantum Feature Map",
+    defaultBody: JSON.stringify({
+      texts: ["quantum machine learning for natural language processing", "transformer attention mechanism"],
+      target_dim: 8,
+      num_layers: 3,
+    }, null, 2),
+    quantumResultLabel: "Quantum Embeddings",
+    classicalResultLabel: "Classical Embeddings",
+    fidelityLabel: "Hilbert-Space Fidelity",
+  },
+  {
+    id: "tune",
+    label: "Quantum Tune",
+    service: "Nexus Search",
+    port: 8002,
+    proxyPath: "/api/apps/search/proxy/v1/search/quantum/tune",
+    icon: <Search className="w-4 h-4" />,
+    iconColor: "text-violet-400",
+    accent: "text-violet-400",
+    accentBg: "bg-violet-400/10 border-violet-400/20",
+    description: "Quantum annealing-based BM25 parameter tuning. Finds optimal k1/b values using QUBO formulation and compares retrieval NDCG against the classical default (k1=1.5, b=0.75).",
+    algorithm: "Quantum Annealing / QUBO",
+    defaultBody: JSON.stringify({
+      training_pairs: [
+        { query: "neural network transformer architecture", relevant_doc_ids: ["doc1", "doc2"] },
+        { query: "attention mechanism self-attention", relevant_doc_ids: ["doc2", "doc3"] },
+        { query: "BERT pre-training masked language model", relevant_doc_ids: ["doc3"] },
+      ],
+      num_steps: 400,
+    }, null, 2),
+    quantumResultLabel: "Quantum-Tuned Params",
+    classicalResultLabel: "Classical Default Params",
+    fidelityLabel: "NDCG Δ (quantum − baseline)",
+  },
+  {
+    id: "partition",
+    label: "Quantum Partition",
+    service: "Nexus Graph",
+    port: 8006,
+    proxyPath: "/api/apps/graph/proxy/v1/graph/quantum/partition",
+    icon: <GitBranch className="w-4 h-4" />,
+    iconColor: "text-cyan-400",
+    accent: "text-cyan-400",
+    accentBg: "bg-cyan-400/10 border-cyan-400/20",
+    description: "QAOA-based min-cut graph bipartitioning. Finds the optimal way to split a graph into two communities, benchmarked against classical Kernighan-Lin partitioning.",
+    algorithm: "QAOA / Min-Cut",
+    defaultBody: JSON.stringify({
+      nodes: ["A", "B", "C", "D", "E", "F"],
+      edges: [
+        { source: "A", target: "B", weight: 1.0 },
+        { source: "A", target: "C", weight: 0.5 },
+        { source: "B", target: "C", weight: 1.5 },
+        { source: "C", target: "D", weight: 0.3 },
+        { source: "D", target: "E", weight: 1.0 },
+        { source: "D", target: "F", weight: 0.8 },
+        { source: "E", target: "F", weight: 1.2 },
+      ],
+      num_rounds: 300,
+    }, null, 2),
+    quantumResultLabel: "Quantum Partition",
+    classicalResultLabel: "Classical Partition",
+    fidelityLabel: "Improvement %",
+  },
+  {
+    id: "optimize",
+    label: "Quantum Optimize",
+    service: "Crypto Analytics",
+    port: 8104,
+    proxyPath: "/api/apps/crypto-analytics/proxy/v1/analytics/quantum/optimize",
+    icon: <LineChart className="w-4 h-4" />,
+    iconColor: "text-indigo-400",
+    accent: "text-indigo-400",
+    accentBg: "bg-indigo-400/10 border-indigo-400/20",
+    description: "QAOA portfolio optimization using a quantum variational ansatz to find the Markowitz-optimal asset allocation, benchmarked against classical mean-variance optimization.",
+    algorithm: "QAOA / Variational Quantum Eigensolver",
+    defaultBody: JSON.stringify({
+      assets: ["BTC", "ETH", "SOL", "ADA"],
+      cov_matrix: [
+        [0.04, 0.012, 0.008, 0.006],
+        [0.012, 0.09, 0.015, 0.010],
+        [0.008, 0.015, 0.16, 0.020],
+        [0.006, 0.010, 0.020, 0.25],
+      ],
+      risk_tolerance: 0.5,
+      num_steps: 300,
+    }, null, 2),
+    quantumResultLabel: "Quantum Weights",
+    classicalResultLabel: "Classical Weights",
+    fidelityLabel: "Sharpe Δ (quantum − classical)",
+  },
+];
+
+function isJsonStr(s: string) {
+  if (!s.trim()) return false;
+  try { JSON.parse(s); return true; } catch { return false; }
+}
+
+function MetricBadge({ label, value, positive }: { label: string; value: string; positive?: boolean }) {
+  return (
+    <div className="flex flex-col items-center gap-0.5 bg-black/30 border border-white/5 rounded-lg px-3 py-2 min-w-[80px]" data-testid={`metric-${label.toLowerCase().replace(/\s+/g, "-")}`}>
+      <span className={`text-sm font-bold font-mono ${positive === false ? "text-red-400" : "text-green-400"}`}>{value}</span>
+      <span className="text-[10px] text-muted-foreground uppercase tracking-wider text-center">{label}</span>
+    </div>
+  );
+}
+
+function QuantumVsClassicalTable({ quantum, classical, quantumLabel, classicalLabel }: {
+  quantum: unknown;
+  classical: unknown;
+  quantumLabel: string;
+  classicalLabel: string;
+}) {
+  function renderValue(v: unknown): React.ReactNode {
+    if (v === null || v === undefined) return <span className="text-muted-foreground text-xs italic">—</span>;
+    if (typeof v === "number") return <span className="font-mono text-xs">{Number.isInteger(v) ? v : v.toFixed(6)}</span>;
+    if (typeof v === "string") return <span className="font-mono text-xs break-all">{v}</span>;
+    if (typeof v === "boolean") return <span className={`font-mono text-xs ${v ? "text-green-400" : "text-red-400"}`}>{String(v)}</span>;
+    if (Array.isArray(v)) {
+      if (v.length === 0) return <span className="text-muted-foreground text-xs">[]</span>;
+      if (typeof v[0] === "number") {
+        const preview = v.slice(0, 6).map((n: number) => (typeof n === "number" ? n.toFixed(4) : String(n)));
+        return (
+          <span className="font-mono text-xs text-foreground/70">
+            [{preview.join(", ")}{v.length > 6 ? `, … +${v.length - 6}` : ""}]
+          </span>
+        );
+      }
+      return <span className="font-mono text-xs text-foreground/70">[{v.map(String).slice(0, 4).join(", ")}{v.length > 4 ? "…" : ""}]</span>;
+    }
+    if (typeof v === "object") {
+      return (
+        <pre className="text-xs font-mono text-foreground/70 whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+          {JSON.stringify(v, null, 2)}
+        </pre>
+      );
+    }
+    return <span className="font-mono text-xs">{String(v)}</span>;
+  }
+
+  const qObj = quantum && typeof quantum === "object" && !Array.isArray(quantum) ? quantum as Record<string, unknown> : null;
+  const cObj = classical && typeof classical === "object" && !Array.isArray(classical) ? classical as Record<string, unknown> : null;
+
+  if (!qObj && !cObj) {
+    return (
+      <div className="grid md:grid-cols-2 gap-4" data-testid="qvc-simple">
+        <div className="bg-black/30 border border-primary/10 rounded-lg p-3">
+          <p className="text-[10px] font-mono uppercase tracking-wider text-primary mb-2">{quantumLabel}</p>
+          <div>{renderValue(quantum)}</div>
+        </div>
+        <div className="bg-black/30 border border-white/5 rounded-lg p-3">
+          <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2">{classicalLabel}</p>
+          <div>{renderValue(classical)}</div>
+        </div>
+      </div>
+    );
+  }
+
+  const allKeys = Array.from(new Set([...Object.keys(qObj ?? {}), ...Object.keys(cObj ?? {})]));
+
+  return (
+    <div className="overflow-x-auto" data-testid="qvc-table">
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr>
+            <th className="text-left text-[10px] font-mono uppercase tracking-wider text-muted-foreground py-2 pr-3 w-32">Field</th>
+            <th className="text-left py-2 pr-3">
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-primary">
+                <Atom className="w-3 h-3" /> {quantumLabel}
+              </span>
+            </th>
+            <th className="text-left py-2">
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                <Cpu className="w-3 h-3" /> {classicalLabel}
+              </span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {allKeys.map(key => (
+            <tr key={key} className="border-t border-white/5 hover:bg-white/[0.02] transition-colors">
+              <td className="py-2 pr-3 font-mono text-muted-foreground/70 align-top">{key}</td>
+              <td className="py-2 pr-3 align-top">{renderValue(qObj?.[key])}</td>
+              <td className="py-2 align-top">{renderValue(cObj?.[key])}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+type RawResponse = Record<string, unknown>;
+
+interface AdaptedResult {
+  quantumData: unknown;
+  classicalData: unknown;
+  metrics: Array<{ label: string; value: string; positive?: boolean }>;
+}
+
+function adaptResponse(epId: string, raw: RawResponse): AdaptedResult {
+  const fmt = (n: unknown, decimals = 4) =>
+    typeof n === "number" ? n.toFixed(decimals) : String(n ?? "—");
+
+  if (epId === "embed") {
+    const qEmbs = raw.quantum_embeddings as number[][] | undefined;
+    const cEmbs = raw.classical_embeddings as number[][] | undefined;
+    const fidelity = raw.fidelity as number | undefined;
+    const dim = raw.target_dim as number | undefined;
+    return {
+      quantumData: qEmbs
+        ? { vectors: qEmbs.map((v, i) => `text[${i}]: [${v.slice(0, 4).map(x => x.toFixed(4)).join(", ")}${v.length > 4 ? "…" : ""}]`).join("\n") }
+        : undefined,
+      classicalData: cEmbs
+        ? { vectors: cEmbs.map((v, i) => `text[${i}]: [${v.slice(0, 4).map(x => x.toFixed(4)).join(", ")}${v.length > 4 ? "…" : ""}]`).join("\n") }
+        : undefined,
+      metrics: [
+        { label: "Hilbert-Space Fidelity", value: fmt(fidelity), positive: typeof fidelity === "number" && fidelity >= 0.5 },
+        { label: "Target Dim", value: fmt(dim, 0) },
+        { label: "Fallback Used", value: raw.fallback_used ? "Yes (simulator)" : "No (hardware)" },
+      ].filter(m => m.value !== "—" && m.value !== "undefined"),
+    };
+  }
+
+  if (epId === "tune") {
+    const qk1 = raw.optimal_k1 as number | undefined;
+    const qb  = raw.optimal_b  as number | undefined;
+    const qNdcg = raw.quantum_ndcg  as number | undefined;
+    const cNdcg = raw.baseline_ndcg as number | undefined;
+    const delta = (qNdcg !== undefined && cNdcg !== undefined) ? qNdcg - cNdcg : undefined;
+    return {
+      quantumData: (qk1 !== undefined || qNdcg !== undefined)
+        ? { k1: qk1, b: qb, ndcg: qNdcg } : undefined,
+      classicalData: (cNdcg !== undefined)
+        ? { k1: 1.5, b: 0.75, ndcg: cNdcg } : undefined,
+      metrics: [
+        { label: "Quantum NDCG",   value: fmt(qNdcg), positive: true },
+        { label: "Baseline NDCG",  value: fmt(cNdcg), positive: true },
+        { label: "NDCG Δ", value: delta !== undefined ? (delta >= 0 ? `+${delta.toFixed(4)}` : delta.toFixed(4)) : "—", positive: delta !== undefined && delta >= 0 },
+        { label: "Optimal k1", value: fmt(qk1) },
+        { label: "Optimal b",  value: fmt(qb)  },
+        { label: "Fallback Used", value: raw.fallback_used ? "Yes (simulator)" : "No (hardware)" },
+      ].filter(m => m.value !== "—" && m.value !== "undefined"),
+    };
+  }
+
+  if (epId === "partition") {
+    const pa   = raw.partition_a as string[] | undefined;
+    const pb   = raw.partition_b as string[] | undefined;
+    const qCut = raw.cut_weight as number | undefined;
+    const cCut = raw.classical_cut_weight as number | undefined;
+    const pct  = raw.improvement_pct as number | undefined;
+    return {
+      quantumData: (pa || pb || qCut !== undefined)
+        ? { partition_a: pa ?? [], partition_b: pb ?? [], cut_weight: qCut } : undefined,
+      classicalData: (cCut !== undefined)
+        ? { cut_weight: cCut } : undefined,
+      metrics: [
+        { label: "Quantum Cut Weight",   value: fmt(qCut), positive: true },
+        { label: "Classical Cut Weight", value: fmt(cCut), positive: true },
+        { label: "Improvement %", value: pct !== undefined ? `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%` : "—", positive: pct !== undefined && pct >= 0 },
+        { label: "Fallback Used", value: raw.fallback_used ? "Yes (simulator)" : "No (hardware)" },
+      ].filter(m => m.value !== "—" && m.value !== "undefined"),
+    };
+  }
+
+  if (epId === "optimize") {
+    const qW  = raw.quantum_weights   as Record<string, number> | undefined;
+    const cW  = raw.classical_weights as Record<string, number> | undefined;
+    const qSh = raw.quantum_sharpe    as number | undefined;
+    const cSh = raw.classical_sharpe  as number | undefined;
+    const shDelta = (qSh !== undefined && cSh !== undefined) ? qSh - cSh : undefined;
+    return {
+      quantumData: (qW || qSh !== undefined) ? { ...qW, sharpe: qSh } : undefined,
+      classicalData: (cW || cSh !== undefined) ? { ...cW, sharpe: cSh } : undefined,
+      metrics: [
+        { label: "Quantum Sharpe",   value: fmt(qSh), positive: true },
+        { label: "Classical Sharpe", value: fmt(cSh), positive: true },
+        { label: "Sharpe Δ", value: shDelta !== undefined ? (shDelta >= 0 ? `+${shDelta.toFixed(4)}` : shDelta.toFixed(4)) : "—", positive: shDelta !== undefined && shDelta >= 0 },
+        { label: "Fallback Used", value: raw.fallback_used ? "Yes (simulator)" : "No (hardware)" },
+      ].filter(m => m.value !== "—" && m.value !== "undefined"),
+    };
+  }
+
+  return { quantumData: undefined, classicalData: undefined, metrics: [] };
+}
+
+function QuantumEndpointPanel({ ep }: { ep: QuantumEndpointDef }) {
+  const [body, setBody] = useState(ep.defaultBody);
+  const [loading, setLoading] = useState(false);
+  const [adapted, setAdapted] = useState<AdaptedResult | null>(null);
+  const [rawJson, setRawJson] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [offline, setOffline] = useState(false);
+
+  async function runExperiment() {
+    setLoading(true); setAdapted(null); setRawJson(null); setErr(null); setOffline(false);
+    try {
+      const res = await fetch(ep.proxyPath, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+      const text = await res.text();
+      let parsed: RawResponse | null = null;
+      try { parsed = JSON.parse(text); } catch { /* raw */ }
+
+      if (!res.ok) {
+        if (res.status === 502 || res.status === 503 || res.status === 504) setOffline(true);
+        const errMsg = parsed?.error ?? parsed?.detail ?? text ?? `HTTP ${res.status}`;
+        setErr(typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg));
+      } else if (parsed) {
+        setAdapted(adaptResponse(ep.id, parsed));
+        setRawJson(JSON.stringify(parsed, null, 2));
+      } else {
+        setRawJson(text);
+      }
+    } catch (e) {
+      setOffline(true);
+      setErr((e as Error).message);
+    }
+    setLoading(false);
+  }
+
+  const hasComparison = adapted && (adapted.quantumData !== undefined || adapted.classicalData !== undefined);
+
+  return (
+    <div className="space-y-5" data-testid={`quantum-panel-${ep.id}`}>
+      {/* Header */}
+      <div className="flex items-start gap-3">
+        <div className={`w-9 h-9 rounded-lg ${ep.accentBg} flex items-center justify-center border shrink-0`}>
+          <span className={ep.iconColor}>{ep.icon}</span>
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-display text-lg font-semibold">{ep.label}</h3>
+            <Badge variant="outline" className="text-xs border-white/10">{ep.service}</Badge>
+            <Badge variant="outline" className={`text-xs ${ep.accentBg} ${ep.accent} border-0`}>{ep.algorithm}</Badge>
+          </div>
+          <p className="text-sm text-muted-foreground mt-0.5">{ep.description}</p>
+          <p className="text-[10px] font-mono text-muted-foreground/60 mt-1">
+            POST <span className="text-foreground/40">{ep.proxyPath}</span>
+          </p>
+        </div>
+      </div>
+
+      {offline && (
+        <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-amber-400/20 bg-amber-400/5 text-amber-400 text-xs" data-testid={`offline-banner-${ep.id}`}>
+          <XCircle className="w-3.5 h-3.5 shrink-0" />
+          <span><strong>{ep.service}</strong> (port {ep.port}) is offline. Start the service to try this endpoint live.</span>
+        </div>
+      )}
+
+      {/* Input */}
+      <div className="space-y-2">
+        <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Request Body (JSON)</label>
+        <textarea
+          value={body}
+          onChange={e => setBody(e.target.value)}
+          rows={10}
+          className={`w-full bg-black/40 border rounded-lg px-3 py-2.5 text-xs font-mono outline-none transition-colors resize-none ${
+            !isJsonStr(body) && body.trim() ? "border-red-500/50 focus:border-red-500/70" : "border-white/10 focus:border-primary/40"
+          }`}
+          data-testid={`textarea-body-${ep.id}`}
+          spellCheck={false}
+        />
+        {!isJsonStr(body) && body.trim() && (
+          <p className="text-xs text-red-400 flex items-center gap-1" data-testid={`hint-invalid-${ep.id}`}>⚠ Invalid JSON</p>
+        )}
+      </div>
+
+      <Button
+        onClick={runExperiment}
+        disabled={loading || !isJsonStr(body)}
+        className="gap-2"
+        data-testid={`btn-run-${ep.id}`}
+      >
+        {loading
+          ? <><Loader2 className="w-4 h-4 animate-spin" /> Running Experiment…</>
+          : <><Zap className="w-4 h-4" /> Run Quantum Experiment</>
+        }
+      </Button>
+
+      {/* Error */}
+      {err && (
+        <div className="flex items-start gap-2 p-3 rounded-lg border border-red-400/20 bg-red-400/5 text-red-400 text-xs" data-testid={`error-${ep.id}`}>
+          <XCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <pre className="whitespace-pre-wrap break-all">{err}</pre>
+        </div>
+      )}
+
+      {/* Result */}
+      {adapted && (
+        <div className="space-y-4 glass-panel rounded-xl border border-white/5 p-5" data-testid={`result-${ep.id}`}>
+          <h4 className="font-semibold text-sm flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-green-400" /> Experiment Results
+          </h4>
+
+          {/* Key metrics row */}
+          {adapted.metrics.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <Zap className="w-3 h-3" /> Key Metrics
+              </p>
+              <div className="flex flex-wrap gap-3" data-testid={`metrics-row-${ep.id}`}>
+                {adapted.metrics.map(m => (
+                  <MetricBadge key={m.label} label={m.label} value={m.value} positive={m.positive} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Side-by-side quantum vs classical */}
+          {hasComparison && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <Atom className="w-3 h-3 text-primary" /> Quantum vs Classical Comparison
+              </p>
+              <div className="bg-black/30 border border-white/5 rounded-lg p-3">
+                <QuantumVsClassicalTable
+                  quantum={adapted.quantumData}
+                  classical={adapted.classicalData}
+                  quantumLabel={ep.quantumResultLabel}
+                  classicalLabel={ep.classicalResultLabel}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Full raw response (collapsible) */}
+          {rawJson && (
+            <details className="group">
+              <summary className="cursor-pointer text-[10px] font-mono text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors select-none">
+                ▶ Full Raw Response
+              </summary>
+              <pre className="mt-2 bg-black/40 border border-white/5 rounded-lg p-3 text-xs font-mono text-foreground/60 overflow-x-auto whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                {rawJson}
+              </pre>
+            </details>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuantumExperimentsSection() {
+  const [activeEp, setActiveEp] = useState(QUANTUM_ENDPOINTS[0].id);
+  const ep = QUANTUM_ENDPOINTS.find(e => e.id === activeEp) ?? QUANTUM_ENDPOINTS[0];
+
+  return (
+    <div className="flex flex-col gap-6" data-testid="quantum-experiments-section">
+      {/* Header */}
+      <div>
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-9 h-9 rounded-lg bg-teal-400/10 border border-teal-400/20 flex items-center justify-center">
+            <FlaskConical className="w-4 h-4 text-teal-400" />
+          </div>
+          <h2 className="font-display text-2xl font-bold">Quantum Experiments</h2>
+        </div>
+        <p className="text-muted-foreground text-sm max-w-2xl">
+          Live try-it panel for the four cross-service quantum endpoints. Each experiment runs a quantum algorithm
+          on the selected backend and renders results side-by-side against a classical baseline, highlighting
+          fidelity and improvement metrics.
+        </p>
+        <div className="flex flex-wrap gap-2 mt-3 text-xs">
+          {[
+            { label: "VQE / Feature Maps", color: "text-amber-400 bg-amber-400/10 border-amber-400/20" },
+            { label: "QAOA / Annealing",   color: "text-violet-400 bg-violet-400/10 border-violet-400/20" },
+            { label: "Quantum Min-Cut",    color: "text-cyan-400 bg-cyan-400/10 border-cyan-400/20" },
+            { label: "Quantum Portfolio",  color: "text-indigo-400 bg-indigo-400/10 border-indigo-400/20" },
+          ].map(t => (
+            <span key={t.label} className={`px-2.5 py-0.5 rounded-full border font-mono ${t.color}`}>{t.label}</span>
+          ))}
+        </div>
+        <p className="text-xs text-amber-400/70 bg-amber-400/5 border border-amber-400/10 rounded-lg px-3 py-2 mt-3">
+          Each endpoint is proxied through <code className="font-mono">/api/apps/&#123;service&#125;/proxy</code>. The
+          sub-services must be running for live results. When offline the form stays active for inspection.
+        </p>
+      </div>
+
+      {/* Tab bar */}
+      <div className="flex flex-wrap gap-2" data-testid="quantum-tabs">
+        {QUANTUM_ENDPOINTS.map(e => (
+          <button
+            key={e.id}
+            onClick={() => setActiveEp(e.id)}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium border transition-colors ${
+              activeEp === e.id
+                ? "bg-primary/10 text-primary border-primary/30"
+                : "border-white/10 text-muted-foreground hover:text-foreground hover:border-white/20 hover:bg-white/5"
+            }`}
+            data-testid={`tab-quantum-${e.id}`}
+          >
+            <span className={activeEp === e.id ? "text-primary" : e.iconColor}>{e.icon}</span>
+            {e.label}
+            <Badge variant="outline" className="text-[10px] border-white/10 ml-0.5 font-mono">{e.service}</Badge>
+          </button>
+        ))}
+      </div>
+
+      {/* Active experiment panel */}
+      <div className="glass-panel rounded-xl border border-white/5 p-6">
+        <QuantumEndpointPanel key={ep.id} ep={ep} />
+      </div>
+    </div>
+  );
+}
+
 // ── SidebarItem ───────────────────────────────────────────────────────────────
 
 function SidebarItem({ label, icon, active, onClick, badge, indent = false }: {
@@ -406,7 +947,7 @@ function SidebarItem({ label, icon, active, onClick, badge, indent = false }: {
 
 // ── DocsPage ──────────────────────────────────────────────────────────────────
 
-type Selection = "core" | string;
+type Selection = "core" | "quantum-experiments" | string;
 
 export default function DocsPage() {
   const [selected, setSelected] = useState<Selection>("core");
@@ -451,6 +992,7 @@ export default function DocsPage() {
               <div className="pt-3">
                 <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider px-3 mb-2">Nexus Quantum</p>
                 <SidebarItem label="Nexus Quantum" icon={<span className="text-teal-400"><Atom className="w-4 h-4" /></span>} active={selected === "quantum"} onClick={() => { setSelected("quantum"); setMobileOpen(false); }} badge="8200" />
+                <SidebarItem label="Quantum Experiments" icon={<span className="text-teal-400"><FlaskConical className="w-4 h-4" /></span>} active={selected === "quantum-experiments"} onClick={() => { setSelected("quantum-experiments"); setMobileOpen(false); }} badge="Try-It" />
               </div>
 
               <div className="pt-3">
@@ -482,9 +1024,11 @@ export default function DocsPage() {
           <main className="flex-1 overflow-y-auto p-4 md:p-8" data-testid="docs-main-content">
             {selected === "core"
               ? <CoreApiSection />
-              : activeSubApp
-                ? <SubAppSection app={activeSubApp} />
-                : null
+              : selected === "quantum-experiments"
+                ? <QuantumExperimentsSection />
+                : activeSubApp
+                  ? <SubAppSection app={activeSubApp} />
+                  : null
             }
           </main>
         </div>
