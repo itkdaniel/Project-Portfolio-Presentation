@@ -1,66 +1,70 @@
 """
-Azure Quantum SDK integration layer.
+Azure Quantum SDK integration layer — nexus-quantum service.
 
-All methods are graceful no-ops when AZURE_QUANTUM_WORKSPACE_ID is absent,
-falling back to local simulation. This allows the entire service to run
-without an Azure subscription during development and testing.
+This module wraps nexus_shared.azure_quantum_client.SharedAzureQuantumClient,
+which is the single source of truth for Azure Quantum workspace connectivity
+across all NexusConsult services.  Keeping the integration logic in the shared
+client avoids duplicating workspace connection, circuit submission, and polling
+code across services.
 
 Architecture:
-  - AzureQuantumService wraps azure-quantum SDK
-  - is_available() returns False when env vars are absent → callers degrade gracefully
-  - submit_job() returns a mock job dict in offline mode
+  - AzureQuantumService is a thin adapter over SharedAzureQuantumClient
+  - is_available() delegates to the shared client's .is_available property
+  - submit_job() / get_job_status() / list_targets() delegate to the shared client
+  - All methods are graceful no-ops when Azure credentials are absent
+
+Configuration:
+  AZURE_QUANTUM_WORKSPACE_ID      — workspace name (required to enable Azure)
+  AZURE_QUANTUM_SUBSCRIPTION_ID   — Azure subscription ID
+  AZURE_QUANTUM_RESOURCE_GROUP    — Azure resource group
+  AZURE_QUANTUM_WORKSPACE_NAME    — workspace display name
+  AZURE_QUANTUM_LOCATION          — region (default: eastus)
+  AZURE_QUANTUM_TARGET            — default QPU target (default: ionq.qpu)
 """
 from __future__ import annotations
 
 import logging
-import uuid
 from typing import Any
+
+from nexus_shared.azure_quantum_client import (
+    SharedAzureQuantumClient,
+    configure_client,
+    get_azure_client,
+)
 
 logger = logging.getLogger("nexus-quantum.azure")
 
 
 class AzureQuantumService:
-    """Thin wrapper around the Azure Quantum SDK.
+    """
+    Thin adapter over SharedAzureQuantumClient for the nexus-quantum service.
 
     Instantiated once at app startup via configure_azure(settings).
-    When AZURE_QUANTUM_WORKSPACE_ID is absent, all methods return
-    simulated responses so the rest of the service works unchanged.
+    Delegates all Azure operations to the shared client singleton.
     """
 
     def __init__(self, settings) -> None:
         self._settings = settings
-        self._workspace = None
-        self._connected = False
-        self._try_connect()
-
-    def _try_connect(self) -> None:
-        """Attempt to connect to Azure Quantum workspace."""
-        if not self._settings.azure_quantum_workspace_id:
+        # Configure the shared client singleton with values from nexus-quantum settings.
+        self._client: SharedAzureQuantumClient = configure_client(
+            workspace_id=getattr(settings, "azure_quantum_workspace_id", ""),
+            subscription_id=getattr(settings, "azure_quantum_subscription_id", ""),
+            resource_group=getattr(settings, "azure_quantum_resource_group", ""),
+            workspace_name=getattr(settings, "azure_quantum_workspace_name", ""),
+            location=getattr(settings, "azure_quantum_location", ""),
+            default_target=getattr(settings, "azure_quantum_target", ""),
+        )
+        if self._client.is_available:
+            logger.info("AzureQuantumService: connected to Azure Quantum workspace")
+        else:
             logger.info(
-                "AZURE_QUANTUM_WORKSPACE_ID not set — running in local simulation mode"
+                "AzureQuantumService: AZURE_QUANTUM_WORKSPACE_ID not set or connection "
+                "failed — running in local simulation mode"
             )
-            return
-        try:
-            from azure.quantum import Workspace  # type: ignore[import]
-
-            self._workspace = Workspace(
-                subscription_id=self._settings.azure_quantum_subscription_id,
-                resource_group=self._settings.azure_quantum_resource_group,
-                name=self._settings.azure_quantum_workspace_name,
-                location=self._settings.azure_quantum_location,
-            )
-            self._connected = True
-            logger.info("Connected to Azure Quantum workspace")
-        except ImportError:
-            logger.warning(
-                "azure-quantum package not installed — falling back to local simulation"
-            )
-        except Exception as exc:
-            logger.warning("Azure Quantum connection failed: %s — using local sim", exc)
 
     @property
     def is_available(self) -> bool:
-        return self._connected
+        return self._client.is_available
 
     async def submit_job(
         self,
@@ -69,83 +73,34 @@ class AzureQuantumService:
         circuit: str,
         shots: int = 1024,
     ) -> dict[str, Any]:
-        """Submit a job to Azure Quantum or return a mock pending job."""
-        if not self._connected:
-            return {
-                "id": str(uuid.uuid4()),
-                "status": "pending",
-                "target": target,
-                "provider": "local_simulator",
-                "azure_job_id": None,
-            }
-        try:
-            from azure.quantum.cirq import AzureQuantumService as CirqService  # type: ignore[import]
-
-            job = self._workspace.submit_job(  # type: ignore[union-attr]
-                name=f"nexus-{job_type}-{uuid.uuid4().hex[:8]}",
-                target=target,
-                input_data=circuit.encode(),
-                input_data_format="qasm.v3",
-                output_data_format="microsoft.quantum-results.v1",
-                shots=shots,
-            )
-            return {
-                "id": job.id,
-                "status": "pending",
-                "target": target,
-                "provider": "azure",
-                "azure_job_id": job.id,
-            }
-        except Exception as exc:
-            logger.error("Azure job submission failed: %s", exc)
-            return {
-                "id": str(uuid.uuid4()),
-                "status": "failed",
-                "target": target,
-                "provider": "azure",
-                "error": str(exc),
-            }
+        """Submit a job to Azure Quantum (delegates to shared client, sync internally)."""
+        result = self._client.submit_circuit(
+            job_type=job_type,
+            circuit=circuit,
+            target=target,
+            shots=shots,
+        )
+        # Map shared client response to the nexus-quantum job dict format.
+        return {
+            "id": result.get("id", ""),
+            "status": result.get("status", "failed"),
+            "target": result.get("target", target),
+            "provider": result.get("provider", "azure"),
+            "azure_job_id": result.get("azure_job_id"),
+            "error": result.get("error"),
+        }
 
     async def get_job_status(self, azure_job_id: str) -> dict[str, Any]:
-        """Poll Azure Quantum for job status."""
-        if not self._connected:
-            return {"status": "completed", "azure_job_id": azure_job_id}
-        try:
-            job = self._workspace.get_job(azure_job_id)  # type: ignore[union-attr]
-            job.refresh()
-            return {
-                "status": job.details.status.lower(),
-                "azure_job_id": azure_job_id,
-                "output_data_uri": getattr(job.details, "output_data_uri", None),
-            }
-        except Exception as exc:
-            logger.error("Azure job status poll failed: %s", exc)
-            return {"status": "unknown", "azure_job_id": azure_job_id, "error": str(exc)}
+        """Poll Azure Quantum for job status (delegates to shared client)."""
+        return self._client.get_job_status(azure_job_id)
 
     def list_targets(self) -> list[dict[str, Any]]:
-        """List available Azure Quantum targets."""
-        if not self._connected:
-            return [
-                {"name": "ionq.simulator", "provider": "IonQ", "available": False},
-                {"name": "quantinuum.sim.h1-1sc", "provider": "Quantinuum", "available": False},
-                {"name": "microsoft.estimator", "provider": "Microsoft", "available": False},
-            ]
-        try:
-            targets = self._workspace.get_targets()  # type: ignore[union-attr]
-            return [
-                {
-                    "name": t.name,
-                    "provider": t.provider_id,
-                    "available": t.current_availability == "Available",
-                }
-                for t in targets
-            ]
-        except Exception as exc:
-            logger.error("Azure targets list failed: %s", exc)
-            return []
+        """List available Azure Quantum targets (delegates to shared client)."""
+        return self._client.list_targets()
 
 
-# Module-level singleton — set by configure_azure() at app startup
+# ── Module-level singleton ─────────────────────────────────────────────────────
+
 _azure_service: AzureQuantumService | None = None
 
 

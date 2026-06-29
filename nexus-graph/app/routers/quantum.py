@@ -67,6 +67,7 @@ class QuantumPartitionResponse(BaseModel):
     classical_cut_weight: float
     improvement_pct: float
     fallback_used: bool
+    azure_job_id: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -144,5 +145,6 @@ async def quantum_partition(body: QuantumPartitionRequest) -> QuantumPartitionRe
         classical_cut_weight=classical_cut,
         improvement_pct=improvement_pct,
         fallback_used=backend.fallback_used,
+        azure_job_id=backend.last_azure_job_id,
         error=None,
     )

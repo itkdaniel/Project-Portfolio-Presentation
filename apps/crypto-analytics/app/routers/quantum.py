@@ -81,6 +81,7 @@ class QuantumOptimizeResponse(BaseModel):
     quantum_sharpe: float
     classical_sharpe: float
     fallback_used: bool
+    azure_job_id: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -115,5 +116,6 @@ async def quantum_optimize(body: QuantumOptimizeRequest) -> QuantumOptimizeRespo
         quantum_sharpe=quantum_sharpe,
         classical_sharpe=classical_sharpe,
         fallback_used=backend.fallback_used,
+        azure_job_id=backend.last_azure_job_id,
         error=None,
     )

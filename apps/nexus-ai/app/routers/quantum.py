@@ -68,6 +68,7 @@ class QuantumEmbedResponse(BaseModel):
     fidelity: float
     target_dim: int
     fallback_used: bool
+    azure_job_id: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -156,5 +157,6 @@ async def quantum_embed(body: QuantumEmbedRequest, request: Request) -> QuantumE
         fidelity=fidelity,
         target_dim=body.target_dim,
         fallback_used=backend.fallback_used,
+        azure_job_id=backend.last_azure_job_id,
         error=None,
     )

@@ -61,6 +61,7 @@ class QuantumTuneResponse(BaseModel):
     quantum_ndcg: float
     baseline_ndcg: float
     fallback_used: bool
+    azure_job_id: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -91,5 +92,6 @@ async def quantum_tune(body: QuantumTuneRequest) -> QuantumTuneResponse:
         quantum_ndcg=quantum_ndcg,
         baseline_ndcg=baseline_ndcg,
         fallback_used=backend.fallback_used,
+        azure_job_id=backend.last_azure_job_id,
         error=None,
     )
