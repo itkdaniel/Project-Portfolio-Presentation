@@ -72,20 +72,20 @@
   },
   "suites": [
     {
-      "title": "booking.spec.ts",
-      "file": "booking.spec.ts",
+      "title": "quantum.spec.ts",
+      "file": "quantum.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [],
       "suites": [
         {
-          "title": "Booking Page — E2E",
-          "file": "booking.spec.ts",
+          "title": "Quantum Page — E2E",
+          "file": "quantum.spec.ts",
           "line": 3,
           "column": 6,
           "specs": [
             {
-              "title": "weekend and past days are disabled in the calendar",
+              "title": "status indicator reads 'Online · Port 8200' when health endpoint returns healthy",
               "ok": false,
               "tags": [],
               "tests": [
@@ -100,7 +100,7 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "failed",
-                      "duration": 3,
+                      "duration": 2,
                       "error": {
                         "message": "Error: browserType.launch: Executable doesn't exist at /home/runner/workspace/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell\n╔═════════════════════════════════════════════════════════════════════════╗\n║ Looks like Playwright Test or Playwright was just installed or updated. ║\n║ Please run the following command to download new browsers:              ║\n║                                                                         ║\n║     npx playwright install                                              ║\n║                                                                         ║\n║ <3 Playwright Team                                                      ║\n╚═════════════════════════════════════════════════════════════════════════╝",
                         "stack": "Error: browserType.launch: Executable doesn't exist at /home/runner/workspace/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell\n╔═════════════════════════════════════════════════════════════════════════╗\n║ Looks like Playwright Test or Playwright was just installed or updated. ║\n║ Please run the following command to download new browsers:              ║\n║                                                                         ║\n║     npx playwright install                                              ║\n║                                                                         ║\n║ <3 Playwright Team                                                      ║\n╚═════════════════════════════════════════════════════════════════════════╝"
@@ -113,13 +113,13 @@
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-06-25T17:44:37.884Z",
+                      "startTime": "2026-06-29T18:16:05.401Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "trace",
                           "contentType": "application/zip",
-                          "path": "/home/runner/workspace/test-results/e2e/booking-Booking-Page-—-E2E-b9db7-re-disabled-in-the-calendar-chromium/trace.zip"
+                          "path": "/home/runner/workspace/test-results/e2e/quantum-Quantum-Page-—-E2E-d2ce0-th-endpoint-returns-healthy-chromium/trace.zip"
                         }
                       ]
                     },
@@ -140,13 +140,13 @@
                       "stdout": [],
                       "stderr": [],
                       "retry": 1,
-                      "startTime": "2026-06-25T17:44:39.704Z",
+                      "startTime": "2026-06-29T18:16:07.255Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "trace",
                           "contentType": "application/zip",
-                          "path": "/home/runner/workspace/test-results/e2e/booking-Booking-Page-—-E2E-b9db7-re-disabled-in-the-calendar-chromium-retry1/trace.zip"
+                          "path": "/home/runner/workspace/test-results/e2e/quantum-Quantum-Page-—-E2E-d2ce0-th-endpoint-returns-healthy-chromium-retry1/trace.zip"
                         }
                       ]
                     }
@@ -154,13 +154,13 @@
                   "status": "unexpected"
                 }
               ],
-              "id": "a3a10f2351dcc49e1cb9-8d95dbb9d107586917f1",
-              "file": "booking.spec.ts",
-              "line": 37,
+              "id": "054c4bdb5052b0bca54c-8a7387f5bf05bc308d71",
+              "file": "quantum.spec.ts",
+              "line": 102,
               "column": 3
             },
             {
-              "title": "clicking a disabled day does not advance to step 2",
+              "title": "status indicator reads 'Service offline' when health endpoint is unreachable",
               "ok": false,
               "tags": [],
               "tests": [
@@ -175,7 +175,7 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "failed",
-                      "duration": 2,
+                      "duration": 3,
                       "error": {
                         "message": "Error: browserType.launch: Executable doesn't exist at /home/runner/workspace/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell\n╔═════════════════════════════════════════════════════════════════════════╗\n║ Looks like Playwright Test or Playwright was just installed or updated. ║\n║ Please run the following command to download new browsers:              ║\n║                                                                         ║\n║     npx playwright install                                              ║\n║                                                                         ║\n║ <3 Playwright Team                                                      ║\n╚═════════════════════════════════════════════════════════════════════════╝",
                         "stack": "Error: browserType.launch: Executable doesn't exist at /home/runner/workspace/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell\n╔═════════════════════════════════════════════════════════════════════════╗\n║ Looks like Playwright Test or Playwright was just installed or updated. ║\n║ Please run the following command to download new browsers:              ║\n║                                                                         ║\n║     npx playwright install                                              ║\n║                                                                         ║\n║ <3 Playwright Team                                                      ║\n╚═════════════════════════════════════════════════════════════════════════╝"
@@ -188,13 +188,13 @@
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-06-25T17:44:41.733Z",
+                      "startTime": "2026-06-29T18:16:09.127Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "trace",
                           "contentType": "application/zip",
-                          "path": "/home/runner/workspace/test-results/e2e/booking-Booking-Page-—-E2E-f0a12--does-not-advance-to-step-2-chromium/trace.zip"
+                          "path": "/home/runner/workspace/test-results/e2e/quantum-Quantum-Page-—-E2E-f6e8f-lth-endpoint-is-unreachable-chromium/trace.zip"
                         }
                       ]
                     },
@@ -202,7 +202,7 @@
                       "workerIndex": 3,
                       "parallelIndex": 0,
                       "status": "failed",
-                      "duration": 2,
+                      "duration": 4,
                       "error": {
                         "message": "Error: browserType.launch: Executable doesn't exist at /home/runner/workspace/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell\n╔═════════════════════════════════════════════════════════════════════════╗\n║ Looks like Playwright Test or Playwright was just installed or updated. ║\n║ Please run the following command to download new browsers:              ║\n║                                                                         ║\n║     npx playwright install                                              ║\n║                                                                         ║\n║ <3 Playwright Team                                                      ║\n╚═════════════════════════════════════════════════════════════════════════╝",
                         "stack": "Error: browserType.launch: Executable doesn't exist at /home/runner/workspace/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell\n╔═════════════════════════════════════════════════════════════════════════╗\n║ Looks like Playwright Test or Playwright was just installed or updated. ║\n║ Please run the following command to download new browsers:              ║\n║                                                                         ║\n║     npx playwright install                                              ║\n║                                                                         ║\n║ <3 Playwright Team                                                      ║\n╚═════════════════════════════════════════════════════════════════════════╝"
@@ -215,13 +215,13 @@
                       "stdout": [],
                       "stderr": [],
                       "retry": 1,
-                      "startTime": "2026-06-25T17:44:43.750Z",
+                      "startTime": "2026-06-29T18:16:11.072Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "trace",
                           "contentType": "application/zip",
-                          "path": "/home/runner/workspace/test-results/e2e/booking-Booking-Page-—-E2E-f0a12--does-not-advance-to-step-2-chromium-retry1/trace.zip"
+                          "path": "/home/runner/workspace/test-results/e2e/quantum-Quantum-Page-—-E2E-f6e8f-lth-endpoint-is-unreachable-chromium-retry1/trace.zip"
                         }
                       ]
                     }
@@ -229,9 +229,9 @@
                   "status": "unexpected"
                 }
               ],
-              "id": "a3a10f2351dcc49e1cb9-b60573c4dce91ca931a3",
-              "file": "booking.spec.ts",
-              "line": 70,
+              "id": "054c4bdb5052b0bca54c-db8066126cbaafd0eaf3",
+              "file": "quantum.spec.ts",
+              "line": 120,
               "column": 3
             }
           ]
@@ -241,8 +241,8 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-06-25T17:44:35.901Z",
-    "duration": 8009.648,
+    "startTime": "2026-06-29T18:16:03.608Z",
+    "duration": 7616.279999999999,
     "expected": 0,
     "skipped": 0,
     "unexpected": 2,

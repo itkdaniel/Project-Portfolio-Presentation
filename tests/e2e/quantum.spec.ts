@@ -99,6 +99,38 @@ test.describe("Quantum Page — E2E", () => {
     await expect(page.getByTestId("quantum-service-status")).toBeVisible();
   });
 
+  test("status indicator reads 'Online · Port 8200' when health endpoint returns healthy", async ({ page }) => {
+    await page.route("**/api/apps/quantum", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "healthy", name: "quantum", port: 8200 }),
+      });
+    });
+
+    await page.goto("/quantum");
+
+    const statusEl = page.getByTestId("quantum-service-status");
+    await expect(statusEl).toBeVisible({ timeout: 8000 });
+    await expect(statusEl).toHaveText("Online · Port 8200", { timeout: 8000 });
+
+    await expect(page.getByTestId("banner-service-offline")).not.toBeVisible();
+  });
+
+  test("status indicator reads 'Service offline' when health endpoint is unreachable", async ({ page }) => {
+    await page.route("**/api/apps/quantum", async (route) => {
+      await route.fulfill({ status: 503 });
+    });
+
+    await page.goto("/quantum");
+
+    const statusEl = page.getByTestId("quantum-service-status");
+    await expect(statusEl).toBeVisible({ timeout: 8000 });
+    await expect(statusEl).toHaveText("Service offline", { timeout: 8000 });
+
+    await expect(page.getByTestId("banner-service-offline")).toBeVisible({ timeout: 8000 });
+  });
+
   test("Circuits tab: Save button is disabled when name or QASM is empty", async ({ page }) => {
     await page.goto("/quantum");
     await page.getByTestId("tab-quantum-circuits").click();
