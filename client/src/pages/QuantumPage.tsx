@@ -106,6 +106,26 @@ const BACKENDS = [
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
+function isValidJson(str: string): boolean {
+  if (!str.trim()) return false;
+  try { JSON.parse(str); return true; } catch { return false; }
+}
+
+function jsonFieldClass(valid: boolean): string {
+  return valid
+    ? "w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-xs font-mono outline-none focus:border-primary/40 transition-colors resize-none"
+    : "w-full bg-black/40 border border-red-500/60 rounded-lg px-3 py-2.5 text-xs font-mono outline-none focus:border-red-500/80 transition-colors resize-none";
+}
+
+function JsonInvalidHint({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <p className="text-xs text-red-400 mt-1 flex items-center gap-1" data-testid="hint-invalid-json">
+      <span>⚠</span> Invalid JSON
+    </p>
+  );
+}
+
 function statusColor(s: JobStatus): string {
   return {
     queued:    "text-amber-400 bg-amber-400/10 border-amber-400/20",
@@ -242,15 +262,16 @@ function JobsTab({ offline }: { offline: boolean }) {
             value={payload}
             onChange={e => setPayload(e.target.value)}
             rows={6}
-            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono outline-none focus:border-primary/40 transition-colors resize-none"
+            className={jsonFieldClass(isValidJson(payload)).replace("py-2.5", "py-2")}
             data-testid="textarea-job-payload"
             placeholder='{ "shots": 1024 }'
           />
+          <JsonInvalidHint show={payload.trim().length > 0 && !isValidJson(payload)} />
         </div>
 
         <Button
           onClick={() => submitMutation.mutate()}
-          disabled={offline || submitMutation.isPending}
+          disabled={offline || submitMutation.isPending || !isValidJson(payload)}
           className="gap-2"
           data-testid="btn-submit-job"
         >
@@ -430,11 +451,18 @@ function SimulateTab({ offline }: { offline: boolean }) {
             value={qasm}
             onChange={e => { setQasm(e.target.value); setResult(null); }}
             rows={10}
-            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-xs font-mono outline-none focus:border-primary/40 transition-colors resize-none"
+            className={`w-full bg-black/40 border rounded-lg px-3 py-2.5 text-xs font-mono outline-none transition-colors resize-none ${
+              !qasm.trim() ? "border-red-500/60 focus:border-red-500/80" : "border-white/10 focus:border-primary/40"
+            }`}
             data-testid="textarea-qasm"
             placeholder="OPENQASM 3.0;&#10;include &quot;stdgates.inc&quot;;&#10;..."
             spellCheck={false}
           />
+          {!qasm.trim() && (
+            <p className="text-xs text-red-400 mt-1 flex items-center gap-1" data-testid="hint-qasm-required">
+              <span>⚠</span> QASM circuit is required
+            </p>
+          )}
         </div>
 
         <div className="flex items-end gap-4">
@@ -617,12 +645,13 @@ function OptimizeTab({ offline }: { offline: boolean }) {
               value={assets}
               onChange={e => setAssets(e.target.value)}
               rows={6}
-              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-xs font-mono outline-none focus:border-primary/40 transition-colors resize-none"
+              className={jsonFieldClass(isValidJson(assets))}
               data-testid="textarea-portfolio-assets"
               placeholder='{ "AAPL": 0.25, "GOOG": 0.75 }'
             />
+            <JsonInvalidHint show={assets.trim().length > 0 && !isValidJson(assets)} />
           </div>
-          <Button onClick={runPortfolio} disabled={offline || portfolioLoading} className="gap-2" data-testid="btn-run-portfolio">
+          <Button onClick={runPortfolio} disabled={offline || portfolioLoading || !isValidJson(assets)} className="gap-2" data-testid="btn-run-portfolio">
             {portfolioLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Optimizing…</> : <><Play className="w-4 h-4" /> Optimize Allocation</>}
           </Button>
           {portfolioResult && <OptimizeResultPanel result={portfolioResult} />}
@@ -642,9 +671,10 @@ function OptimizeTab({ offline }: { offline: boolean }) {
                 value={nodes}
                 onChange={e => setNodes(e.target.value)}
                 rows={4}
-                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-xs font-mono outline-none focus:border-primary/40 transition-colors resize-none"
+                className={jsonFieldClass(isValidJson(nodes))}
                 data-testid="textarea-route-nodes"
               />
+              <JsonInvalidHint show={nodes.trim().length > 0 && !isValidJson(nodes)} />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Cost Matrix (JSON 2D array)</label>
@@ -652,12 +682,13 @@ function OptimizeTab({ offline }: { offline: boolean }) {
                 value={matrix}
                 onChange={e => setMatrix(e.target.value)}
                 rows={4}
-                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-xs font-mono outline-none focus:border-primary/40 transition-colors resize-none"
+                className={jsonFieldClass(isValidJson(matrix))}
                 data-testid="textarea-route-matrix"
               />
+              <JsonInvalidHint show={matrix.trim().length > 0 && !isValidJson(matrix)} />
             </div>
           </div>
-          <Button onClick={runRoute} disabled={offline || routeLoading} className="gap-2" data-testid="btn-run-route">
+          <Button onClick={runRoute} disabled={offline || routeLoading || !isValidJson(nodes) || !isValidJson(matrix)} className="gap-2" data-testid="btn-run-route">
             {routeLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Optimizing…</> : <><Play className="w-4 h-4" /> Find Shortest Route</>}
           </Button>
           {routeResult && <OptimizeResultPanel result={routeResult} />}
@@ -676,12 +707,13 @@ function OptimizeTab({ offline }: { offline: boolean }) {
               value={qubo}
               onChange={e => setQubo(e.target.value)}
               rows={6}
-              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-xs font-mono outline-none focus:border-primary/40 transition-colors resize-none"
+              className={jsonFieldClass(isValidJson(qubo))}
               data-testid="textarea-qubo-matrix"
               placeholder="[[-1, 2], [2, -1]]"
             />
+            <JsonInvalidHint show={qubo.trim().length > 0 && !isValidJson(qubo)} />
           </div>
-          <Button onClick={runConstraint} disabled={offline || constraintLoading} className="gap-2" data-testid="btn-run-constraint">
+          <Button onClick={runConstraint} disabled={offline || constraintLoading || !isValidJson(qubo)} className="gap-2" data-testid="btn-run-constraint">
             {constraintLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Solving…</> : <><Play className="w-4 h-4" /> Solve QUBO</>}
           </Button>
           {constraintResult && <OptimizeResultPanel result={constraintResult} />}
@@ -783,11 +815,18 @@ function CircuitsTab({ offline }: { offline: boolean }) {
             value={qasm}
             onChange={e => setQasm(e.target.value)}
             rows={8}
-            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-xs font-mono outline-none focus:border-primary/40 transition-colors resize-none"
+            className={`w-full bg-black/40 border rounded-lg px-3 py-2.5 text-xs font-mono outline-none transition-colors resize-none ${
+              !qasm.trim() ? "border-red-500/60 focus:border-red-500/80" : "border-white/10 focus:border-primary/40"
+            }`}
             data-testid="textarea-circuit-qasm"
             placeholder="OPENQASM 3.0;&#10;include &quot;stdgates.inc&quot;;&#10;..."
             spellCheck={false}
           />
+          {!qasm.trim() && (
+            <p className="text-xs text-red-400 mt-1 flex items-center gap-1" data-testid="hint-circuit-qasm-required">
+              <span>⚠</span> QASM circuit is required
+            </p>
+          )}
         </div>
         <div className="flex gap-2">
           <Button onClick={saveCircuit} disabled={offline || saving || !name.trim() || !qasm.trim()} className="gap-2" data-testid="btn-save-circuit">
