@@ -121,3 +121,62 @@ class TestQuantumSmokeNexusAI:
             assert isinstance(emb, list)
             for v in emb:
                 assert isinstance(v, (int, float))
+
+
+# ── Missing-model degradation tests ───────────────────────────────────────────
+
+@pytest.fixture
+def app_no_model():
+    """App with model=None and tokenizer=None to exercise the 503 path."""
+    from app.routers.quantum import router as quantum_router
+    application = _make_test_app()
+    # Override after construction — _make_test_app always injects MockModel
+    application.state.model = None
+    application.state.tokenizer = None
+    application.include_router(quantum_router)
+    return application
+
+
+@pytest.fixture
+async def client_no_model(app_no_model):
+    async with AsyncClient(
+        transport=ASGITransport(app=app_no_model), base_url="http://test"
+    ) as ac:
+        yield ac
+
+
+class TestQuantumMissingModel:
+    """Verify the endpoint degrades gracefully (HTTP 503) when model is absent."""
+
+    async def test_missing_model_returns_503(self, client_no_model):
+        r = await client_no_model.post(QUANTUM_PATH, json=SAMPLE_PAYLOAD)
+        assert r.status_code == 503, (
+            f"Expected 503 when model is None, got {r.status_code}: {r.text}"
+        )
+
+    async def test_503_response_has_error_field(self, client_no_model):
+        r = await client_no_model.post(QUANTUM_PATH, json=SAMPLE_PAYLOAD)
+        body = r.json()
+        assert "error" in body, f"'error' field missing from 503 body: {body}"
+
+    async def test_503_response_contains_fallback_used(self, client_no_model):
+        """fallback_used is part of the 503 detail dict and must appear in the error field."""
+        import ast
+        r = await client_no_model.post(QUANTUM_PATH, json=SAMPLE_PAYLOAD)
+        body = r.json()
+        # The exception handler stringifies the detail dict into the "error" field.
+        # Parse it back so we can assert on the structured value.
+        error_field = body.get("error", "")
+        assert "fallback_used" in error_field, (
+            f"'fallback_used' not found in error field: {error_field!r}"
+        )
+        try:
+            detail = ast.literal_eval(error_field)
+            assert "fallback_used" in detail, (
+                f"Parsed detail missing 'fallback_used': {detail}"
+            )
+            assert isinstance(detail["fallback_used"], bool), (
+                f"fallback_used is not bool: {detail['fallback_used']!r}"
+            )
+        except (ValueError, SyntaxError):
+            pass  # string containment check above already passed

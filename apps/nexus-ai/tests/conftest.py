@@ -12,8 +12,47 @@ _make_test_app: builds a minimal FastAPI test app with state pre-injected
 """
 from __future__ import annotations
 
+import importlib
+import importlib.util
+import sys
 import time
+from pathlib import Path
 from typing import List, Optional
+
+
+def _register_nexus_shared() -> None:
+    """
+    Register apps/_shared/ as the nexus_shared package without a pip install.
+
+    apps/_shared/pyproject.toml declares  `package-dir = nexus_shared = ""`
+    meaning the directory itself is the nexus_shared package root.  When the
+    package isn't pip-installed (CI, local dev) we wire it up via importlib so
+    that `from nexus_shared.quantum_utils import get_backend` resolves to the
+    shared implementation in apps/_shared/.
+
+    Safe to call multiple times — skips if already in sys.modules.
+    """
+    if "nexus_shared" in sys.modules:
+        return
+    shared_dir = Path(__file__).resolve().parents[3] / "apps" / "_shared"
+    if not shared_dir.is_dir():
+        # Fallback: try one level up (when running from inside apps/nexus-ai)
+        shared_dir = Path(__file__).resolve().parents[2] / "_shared"
+    if not shared_dir.is_dir():
+        return  # Can't locate _shared — let normal import fail with a clear error
+    spec = importlib.util.spec_from_file_location(
+        "nexus_shared",
+        shared_dir / "__init__.py",
+        submodule_search_locations=[str(shared_dir)],
+    )
+    if spec is None or spec.loader is None:
+        return
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["nexus_shared"] = mod
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+
+
+_register_nexus_shared()
 
 import pytest
 import torch
