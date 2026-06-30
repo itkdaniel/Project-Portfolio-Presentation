@@ -1,0 +1,95 @@
+name: "crypto-dex CI"
+
+on:
+  push:
+    paths:
+      - "apps/crypto-dex/**"
+      - ".github/workflows/crypto-dex-ci.yml"
+  pull_request:
+    paths:
+      - "apps/crypto-dex/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  lint:
+    name: Lint (ruff + mypy)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/crypto-dex
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install lint tools
+        run: pip install ruff>=0.4.4 mypy>=1.10.0
+      - name: Ruff lint
+        run: ruff check app/ tests/
+      - name: mypy type check
+        run: mypy app/ --ignore-missing-imports --no-strict-optional
+
+  unit:
+    name: Unit tests (SQLite in-memory)
+    runs-on: ubuntu-latest
+    needs: lint
+    defaults:
+      run:
+        working-directory: apps/crypto-dex
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: pip install .[dev] pytest-html
+      - name: Run unit tests
+        run: pytest tests/unit/ -v --cov=app --cov-report=xml --cov-report=term-missing --html=reports/test-report.html --self-contained-html
+
+  bdd:
+    name: BDD tests (pytest-bdd)
+    runs-on: ubuntu-latest
+    needs: lint
+    defaults:
+      run:
+        working-directory: apps/crypto-dex
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: pip install .[dev]
+      - name: Run BDD tests
+        run: pytest tests/bdd/ -v
+
+  regression:
+    name: Regression / contract tests
+    runs-on: ubuntu-latest
+    needs: lint
+    defaults:
+      run:
+        working-directory: apps/crypto-dex
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: pip install .[dev]
+      - name: Run regression tests
+        run: pytest tests/regression/ -v

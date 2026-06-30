@@ -21,6 +21,11 @@ import QuantumPage from "@/pages/QuantumPage";
 import SearchPage from "@/pages/SearchPage";
 import AIPage from "@/pages/AIPage";
 import AnalyticsPage from "@/pages/AnalyticsPage";
+import CryptoPage from "@/pages/CryptoPage";
+import CryptoMarketPage from "@/pages/CryptoMarketPage";
+import CryptoWalletPage from "@/pages/CryptoWalletPage";
+import CryptoDEXPage from "@/pages/CryptoDEXPage";
+import CryptoAnalyticsPage from "@/pages/CryptoAnalyticsPage";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -44,6 +49,11 @@ function Router() {
       <Route path="/search" component={SearchPage}/>
       <Route path="/ai" component={AIPage}/>
       <Route path="/analytics" component={AnalyticsPage}/>
+      <Route path="/crypto" component={CryptoPage}/>
+      <Route path="/crypto/market" component={CryptoMarketPage}/>
+      <Route path="/crypto/wallet" component={CryptoWalletPage}/>
+      <Route path="/crypto/dex" component={CryptoDEXPage}/>
+      <Route path="/crypto/analytics" component={CryptoAnalyticsPage}/>
       <Route component={NotFound} />
     </Switch>
   );

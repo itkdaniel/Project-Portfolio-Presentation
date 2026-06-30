@@ -29,8 +29,20 @@ jobs:
             prefix: apps/nexus-quantum
             repo: itkdaniel/nexus-quantum
           - name: nexus-crypto
-            prefix: apps/crypto-analytics
+            prefix: apps/nexus-crypto
             repo: itkdaniel/nexus-crypto
+          - name: nexus-crypto-market
+            prefix: apps/crypto-market
+            repo: itkdaniel/nexus-crypto-market
+          - name: nexus-crypto-wallet
+            prefix: apps/crypto-wallet
+            repo: itkdaniel/nexus-crypto-wallet
+          - name: nexus-crypto-dex
+            prefix: apps/crypto-dex
+            repo: itkdaniel/nexus-crypto-dex
+          - name: nexus-crypto-analytics
+            prefix: apps/crypto-analytics
+            repo: itkdaniel/nexus-crypto-analytics
 
     steps:
       - name: Checkout monorepo (full history)

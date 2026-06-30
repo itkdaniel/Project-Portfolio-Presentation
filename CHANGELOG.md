@@ -10,6 +10,33 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.7.0] — 2026-06-30
+
+### Added
+- **NexusCrypto ecosystem** — 4 new FastAPI microservices + 1 extended:
+  - **nexus-crypto** (port 8100): Main portal — JWT auth (HMAC SHA-256), portfolio management, watchlist, static price feed for BTC/ETH/SOL/BNB/USDC/ADA/AVAX/MATIC/DOT/LINK
+  - **crypto-market** (port 8101): Real-time market data — OHLCV candles, price ticks, 24h tickers, exchange registry; 30-day synthetic seed data for BTC/ETH/SOL
+  - **crypto-wallet** (port 8102): HD wallet management — wallet CRUD, multi-chain addresses, token balances, transaction history; demo wallet with ETH/USDC/MATIC/SOL balances
+  - **crypto-dex** (port 8103): Constant-product AMM DEX — liquidity pools, swap quotes, order placement, trade recording; 5 seed pools (ETH/USDC, BTC/USDC, SOL/USDC, ETH/BTC, MATIC/USDC)
+  - **crypto-analytics** (port 8104): Extended with portfolio analytics engine — Sharpe ratio, max drawdown, annualised volatility, P&L timeseries, asset breakdown; new `POST /v1/analytics/portfolio/snapshot`, `GET /v1/analytics/portfolio/timeseries`, `GET /v1/analytics/portfolio/performance`, `GET /v1/analytics/portfolio/breakdown` endpoints
+- **5 React UI pages** (all with offline banner + static fallback data):
+  - `/crypto` — NexusCrypto dashboard: live price ticker (5-coin grid), full coins table, sub-page navigation cards
+  - `/crypto/market` — Market data: coin selector list, recharts AreaChart for OHLCV, interval selector (1h/4h/1d/1w), market stats row
+  - `/crypto/wallet` — HD wallet viewer: wallet list, address cards with token balances, transaction history table with in/out badges
+  - `/crypto/dex` — DEX interface: pool list table (TVL/APR/volume), client-side AMM swap quote panel, pool detail stats, recent trades feed
+  - `/crypto/analytics` — Portfolio analytics: performance metric cards (Sharpe/drawdown/volatility/return), AreaChart timeseries, P&L BarChart, asset allocation PieChart, asset breakdown table with P&L colouring
+- **Crypto navbar entry** — "Crypto" link with hover dropdown (Dashboard / Market / Wallet / DEX / Analytics); mobile: indented sub-links
+- All 5 services registered in `server/gateway.ts`; docker-compose + dev overrides + nginx targets updated
+- **docker-compose.yml**: all 5 NexusCrypto services with healthchecks, depends_on postgres, CORS env vars
+- **docker-compose.dev.yml**: hot-reload uvicorn overrides for all 5 NexusCrypto services
+- **`.github/workflows/mirror.yml`**: fixed nexus-crypto prefix (`apps/crypto-analytics` → `apps/nexus-crypto`); added nexus-crypto-market, nexus-crypto-wallet, nexus-crypto-dex, nexus-crypto-analytics mirrors
+- **crypto-analytics tests**: unit tests for analytics engine functions (`test_portfolio.py`), E2E tests for snapshot/timeseries/performance/breakdown API flow (`test_portfolio_flow.py`), updated `conftest.py` to support portfolio routers
+
+### Changed
+- Platform version bumped to `1.7.0` in `package.json`
+
+---
+
 ## [1.6.0] — 2026-06-29
 
 ### Added

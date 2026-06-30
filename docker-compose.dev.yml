@@ -35,3 +35,23 @@ services:
     volumes:
       - ./apps/nexus-analytics:/app
     command: uvicorn app.main:create_app --factory --reload --host 0.0.0.0 --port 8300
+  nexus-crypto:
+    volumes:
+      - ./apps/nexus-crypto:/app
+    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8100
+  crypto-market:
+    volumes:
+      - ./apps/crypto-market:/app
+    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8101
+  crypto-wallet:
+    volumes:
+      - ./apps/crypto-wallet:/app
+    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8102
+  crypto-dex:
+    volumes:
+      - ./apps/crypto-dex:/app
+    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8103
+  crypto-analytics:
+    volumes:
+      - ./apps/crypto-analytics:/app
+    command: uvicorn app.main:create_app --factory --reload --host 0.0.0.0 --port 8104

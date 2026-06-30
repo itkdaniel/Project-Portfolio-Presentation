@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText, Activity, BookOpen, LogIn, UserPlus, LogOut, ClipboardCheck, Shield, GitBranch, Search, Brain, BarChart2, Atom } from "lucide-react";
+import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText, Activity, BookOpen, LogIn, UserPlus, LogOut, ClipboardCheck, Shield, GitBranch, Search, Brain, BarChart2, Atom, Bitcoin, ChevronDown } from "lucide-react";
 import { NotificationBell } from "./NotificationBell";
 
 interface MeUser { id: string; username: string; email: string; role?: string; fullName?: string; profilePictureUrl?: string; }
@@ -96,6 +96,29 @@ export function Navbar() {
           <Link href="/analytics" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-analytics">
             <BarChart2 className="w-4 h-4" /> Analytics
           </Link>
+          {/* Crypto dropdown */}
+          <div className="relative group">
+            <Link href="/crypto" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-crypto">
+              <Bitcoin className="w-4 h-4" /> Crypto <ChevronDown className="w-3 h-3 opacity-60" />
+            </Link>
+            <div className="absolute top-full left-0 mt-1 w-44 bg-card border border-border rounded-lg shadow-xl opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all z-50 py-1">
+              <Link href="/crypto" className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors" data-testid="nav-crypto-home">
+                <Bitcoin className="w-3.5 h-3.5" /> Dashboard
+              </Link>
+              <Link href="/crypto/market" className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors" data-testid="nav-crypto-market">
+                <BarChart2 className="w-3.5 h-3.5" /> Market
+              </Link>
+              <Link href="/crypto/wallet" className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors" data-testid="nav-crypto-wallet">
+                <Activity className="w-3.5 h-3.5" /> Wallet
+              </Link>
+              <Link href="/crypto/dex" className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors" data-testid="nav-crypto-dex">
+                <Atom className="w-3.5 h-3.5" /> DEX
+              </Link>
+              <Link href="/crypto/analytics" className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors" data-testid="nav-crypto-analytics">
+                <Brain className="w-3.5 h-3.5" /> Analytics
+              </Link>
+            </div>
+          </div>
           <Link href="/tax" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-tax">
             <FileText className="w-4 h-4" /> Tax Forms
           </Link>
@@ -185,6 +208,23 @@ export function Navbar() {
           <Link href="/analytics" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-analytics-mobile">
             <BarChart2 className="w-4 h-4" /> Analytics
           </Link>
+          <Link href="/crypto" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-crypto-mobile">
+            <Bitcoin className="w-4 h-4" /> Crypto
+          </Link>
+          <div className="pl-6 flex flex-col gap-1">
+            <Link href="/crypto/market" className="p-1.5 text-xs text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-crypto-market-mobile">
+              <BarChart2 className="w-3.5 h-3.5" /> Market
+            </Link>
+            <Link href="/crypto/wallet" className="p-1.5 text-xs text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-crypto-wallet-mobile">
+              <Activity className="w-3.5 h-3.5" /> Wallet
+            </Link>
+            <Link href="/crypto/dex" className="p-1.5 text-xs text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-crypto-dex-mobile">
+              <Atom className="w-3.5 h-3.5" /> DEX
+            </Link>
+            <Link href="/crypto/analytics" className="p-1.5 text-xs text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-crypto-analytics-mobile">
+              <Brain className="w-3.5 h-3.5" /> Analytics
+            </Link>
+          </div>
           <Link href="/tax" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
             <FileText className="w-4 h-4" /> Tax Forms
           </Link>

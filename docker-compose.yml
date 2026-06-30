@@ -215,6 +215,120 @@ services:
       retries: 3
     logging: *default-logging
 
+  # ── NexusCrypto Ecosystem ─────────────────────────────────────────────────────
+
+  nexus-crypto:
+    build:
+      context: ./apps/nexus-crypto
+      dockerfile: Dockerfile
+    container_name: nexus_crypto
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${PGUSER:-nexus}:${PGPASSWORD:-nexuspassword}@postgres:5432/nexuscrypto
+      NEXUS_CRYPTO_URL: http://nexus-crypto:8100
+      JWT_SECRET: ${NEXUS_CRYPTO_JWT_SECRET:-nexus-crypto-jwt-secret-change-in-prod}
+      CORS_ORIGINS: '["*"]'
+    ports:
+      - "8100:8100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8100/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging: *default-logging
+
+  crypto-market:
+    build:
+      context: ./apps/crypto-market
+      dockerfile: Dockerfile
+    container_name: crypto_market
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${PGUSER:-nexus}:${PGPASSWORD:-nexuspassword}@postgres:5432/cryptomarket
+      NEXUS_CRYPTO_MARKET_URL: http://crypto-market:8101
+      CORS_ORIGINS: '["*"]'
+    ports:
+      - "8101:8101"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8101/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging: *default-logging
+
+  crypto-wallet:
+    build:
+      context: ./apps/crypto-wallet
+      dockerfile: Dockerfile
+    container_name: crypto_wallet
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${PGUSER:-nexus}:${PGPASSWORD:-nexuspassword}@postgres:5432/cryptowallet
+      NEXUS_CRYPTO_WALLET_URL: http://crypto-wallet:8102
+      CORS_ORIGINS: '["*"]'
+    ports:
+      - "8102:8102"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8102/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging: *default-logging
+
+  crypto-dex:
+    build:
+      context: ./apps/crypto-dex
+      dockerfile: Dockerfile
+    container_name: crypto_dex
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${PGUSER:-nexus}:${PGPASSWORD:-nexuspassword}@postgres:5432/cryptodex
+      NEXUS_CRYPTO_DEX_URL: http://crypto-dex:8103
+      CORS_ORIGINS: '["*"]'
+    ports:
+      - "8103:8103"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8103/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging: *default-logging
+
+  crypto-analytics:
+    build:
+      context: ./apps/crypto-analytics
+      dockerfile: Dockerfile
+    container_name: crypto_analytics
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${PGUSER:-nexus}:${PGPASSWORD:-nexuspassword}@postgres:5432/cryptoanalytics
+      NEXUS_CRYPTO_ANALYTICS_URL: http://crypto-analytics:8104
+      NEXUS_CRYPTO_URL: http://nexus-crypto:8100
+      CORS_ORIGINS: '["*"]'
+    ports:
+      - "8104:8104"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8104/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging: *default-logging
+
 volumes:
   postgres_data:
   redis_data:
