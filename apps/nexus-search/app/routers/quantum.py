@@ -36,7 +36,10 @@ from typing import List, Optional
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from nexus_shared.quantum_utils import get_backend
+try:
+    from nexus_shared.quantum_utils import get_backend
+except ModuleNotFoundError:
+    from app.services._quantum_fallback import get_backend  # type: ignore[no-redef]
 
 router = APIRouter(prefix="/v1/search/quantum", tags=["quantum"])
 
