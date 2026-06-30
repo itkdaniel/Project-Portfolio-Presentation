@@ -402,3 +402,76 @@ class TestQuantumDbIntegration:
         assert r.status_code in (200, 422), (
             f"Unexpected status {r.status_code} for mixed real/unknown IDs: {r.text}"
         )
+
+    async def test_duplicate_pairs_k1_b_remain_valid(self, db_seeded_client):
+        """
+        Submitting 50 identical (query, relevant_doc_ids) pairs must not cause
+        the annealer to overfit and produce out-of-range k1/b values or a
+        collapsed NDCG score.
+
+        The endpoint deduplicates before annealing, so the effective training
+        signal is a single unique pair — the result must still satisfy the same
+        parameter-range and score constraints as a well-formed diverse corpus.
+        """
+        client, ids = db_seeded_client
+        single_pair = {
+            "query": "authentication JWT security",
+            "relevant_doc_ids": [ids[0], ids[1]],
+        }
+        duplicate_pairs = [single_pair] * 50
+        payload = {"training_pairs": duplicate_pairs, "num_steps": 150}
+        r = await client.post(QUANTUM_PATH, json=payload)
+        assert r.status_code == 200, r.text
+        body = r.json()
+
+        k1 = body["optimal_k1"]
+        b = body["optimal_b"]
+        quantum_ndcg = body["quantum_ndcg"]
+        baseline_ndcg = body["baseline_ndcg"]
+
+        assert 0.1 <= k1 <= 5.0, f"k1 out of valid range after duplicate input: {k1}"
+        assert 0.0 <= b <= 1.0, f"b out of valid range after duplicate input: {b}"
+        assert quantum_ndcg >= 0.0, f"quantum_ndcg collapsed to negative: {quantum_ndcg}"
+        assert baseline_ndcg >= 0.0, f"baseline_ndcg collapsed to negative: {baseline_ndcg}"
+
+        # NDCG must not degrade beyond a 10% tolerance relative to baseline
+        tolerance = 0.10
+        assert quantum_ndcg >= baseline_ndcg - tolerance, (
+            f"Quantum NDCG ({quantum_ndcg:.4f}) degraded more than {tolerance:.0%} "
+            f"below baseline ({baseline_ndcg:.4f}) when trained on duplicate pairs"
+        )
+
+    async def test_duplicate_pairs_metadata_reports_deduplication(self, db_seeded_client):
+        """
+        When 50 identical pairs are submitted the response metadata must report:
+          training_pairs_received == 50
+          training_pairs_unique   == 1
+
+        This confirms the deduplication step ran and its results are visible to
+        callers so they can detect misconfigured retry loops server-side without
+        having to inspect their own payloads.
+        """
+        client, ids = db_seeded_client
+        single_pair = {
+            "query": "BM25 full-text search semantic re-ranking",
+            "relevant_doc_ids": [ids[5]],
+        }
+        duplicate_pairs = [single_pair] * 50
+        payload = {"training_pairs": duplicate_pairs, "num_steps": 50}
+        r = await client.post(QUANTUM_PATH, json=payload)
+        assert r.status_code == 200, r.text
+        body = r.json()
+
+        assert "training_pairs_received" in body, (
+            "Response must contain 'training_pairs_received' metadata field"
+        )
+        assert "training_pairs_unique" in body, (
+            "Response must contain 'training_pairs_unique' metadata field"
+        )
+        assert body["training_pairs_received"] == 50, (
+            f"Expected training_pairs_received=50, got {body['training_pairs_received']}"
+        )
+        assert body["training_pairs_unique"] == 1, (
+            f"Expected training_pairs_unique=1 after deduplication of 50 identical pairs, "
+            f"got {body['training_pairs_unique']}"
+        )
