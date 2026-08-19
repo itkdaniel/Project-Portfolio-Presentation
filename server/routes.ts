@@ -1522,6 +1522,47 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
     return { status: resp.status, data };
   }
 
+  // The monolith's Drizzle records serialize as camelCase, while the standalone
+  // scraper's FastAPI schemas use snake_case. Keep the gateway API consistent
+  // regardless of which implementation is serving entity data.
+  function isJsonRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+
+  function normalizeScraperEntity(entity: unknown): unknown {
+    if (!isJsonRecord(entity)) return entity;
+    return {
+      ...entity,
+      sourceUrl: entity.source_url,
+      sourceLabel: entity.source_label,
+      trendScore: entity.trend_score,
+      scrapedAt: entity.scraped_at,
+      classifiedAt: entity.classified_at,
+    };
+  }
+
+  function normalizeScraperRelation(relation: unknown): unknown {
+    if (!isJsonRecord(relation)) return relation;
+    return {
+      ...relation,
+      toEntityId: relation.to_entity_id,
+      relationType: relation.relation_type,
+    };
+  }
+
+  function normalizeScraperEntityList(data: unknown): unknown {
+    if (!isJsonRecord(data) || !Array.isArray(data.items)) return data;
+    return { ...data, items: data.items.map(normalizeScraperEntity) };
+  }
+
+  function normalizeScraperEntityDetail(data: unknown): unknown {
+    if (!isJsonRecord(data)) return data;
+    return {
+      ...normalizeScraperEntity(data) as Record<string, unknown>,
+      relations: Array.isArray(data.relations) ? data.relations.map(normalizeScraperRelation) : [],
+    };
+  }
+
   // ── Entity Types ──────────────────────────────────────────────────────────
 
   // GET /api/entity-types — list all classification types
@@ -1540,7 +1581,7 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
   app.get("/api/entities", async (req, res) => {
     if (NEXUS_SCRAPER_URL) {
       const { status, data } = await proxyToScraperService("GET", "/v1/entities", req);
-      return res.status(status).json(data);
+      return res.status(status).json(normalizeScraperEntityList(data));
     }
     const limit  = Math.min(parseInt(req.query.limit  as string || "20"), 100);
     const offset = parseInt(req.query.offset as string || "0");
@@ -1554,7 +1595,7 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
   app.get("/api/entities/:id", async (req, res) => {
     if (NEXUS_SCRAPER_URL) {
       const { status, data } = await proxyToScraperService("GET", `/v1/entities/${req.params.id}`, req);
-      return res.status(status).json(data);
+      return res.status(status).json(normalizeScraperEntityDetail(data));
     }
     const entity = await storage.getEntity(req.params.id as string);
     if (!entity) return res.status(404).json({ message: "Entity not found" });
