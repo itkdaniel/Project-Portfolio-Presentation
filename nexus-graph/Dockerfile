@@ -18,16 +18,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+RUN groupadd --system --gid 10001 nexus \
+    && useradd --system --uid 10001 --gid nexus --home-dir /app --shell /usr/sbin/nologin nexus
+
 # Install the shared quantum package first (requires repo-root build context)
 COPY apps/_shared/ /nexus_shared_src/
-RUN pip install --no-cache-dir /nexus_shared_src/
+RUN pip install --no-cache-dir "setuptools>=68" wheel \
+    && pip install --no-cache-dir --no-build-isolation /nexus_shared_src/
 
 # Install the app (pyproject.toml declares nexus-shared as a dep, already met above)
 COPY nexus-graph/pyproject.toml ./
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir --no-build-isolation -e .
 
 COPY nexus-graph/app/ ./app/
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
+
+RUN chown -R nexus:nexus /app
+
+USER nexus
 
 EXPOSE 8006
 ENV PORT=8006

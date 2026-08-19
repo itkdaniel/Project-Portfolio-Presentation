@@ -303,6 +303,41 @@ async def test_post_relation_missing_entity_returns_404(client):
     assert res.status_code == 404
 
 
+# ── startup admin-token requirement ──────────────────────────────────────────
+
+def test_create_app_fails_when_token_required_but_missing(monkeypatch):
+    """GRAPH_REQUIRE_ADMIN_TOKEN=1 with no token → startup aborts."""
+    monkeypatch.setenv("GRAPH_REQUIRE_ADMIN_TOKEN", "1")
+    monkeypatch.delenv("NEXUS_GRAPH_ADMIN_TOKEN", raising=False)
+    from app.main import create_app
+    with pytest.raises(RuntimeError, match="NEXUS_GRAPH_ADMIN_TOKEN is required"):
+        create_app()
+
+
+def test_create_app_fails_when_token_required_but_blank(monkeypatch):
+    monkeypatch.setenv("GRAPH_REQUIRE_ADMIN_TOKEN", "true")
+    monkeypatch.setenv("NEXUS_GRAPH_ADMIN_TOKEN", "   ")
+    from app.main import create_app
+    with pytest.raises(RuntimeError, match="NEXUS_GRAPH_ADMIN_TOKEN is required"):
+        create_app()
+
+
+def test_create_app_succeeds_when_token_required_and_present(monkeypatch):
+    monkeypatch.setenv("GRAPH_REQUIRE_ADMIN_TOKEN", "1")
+    monkeypatch.setenv("NEXUS_GRAPH_ADMIN_TOKEN", "some-secret")
+    with patch("app.database.init_db"), patch("app.database.close_db", new_callable=AsyncMock):
+        from app.main import create_app
+        assert create_app() is not None
+
+
+def test_create_app_succeeds_without_requirement_flag(monkeypatch):
+    monkeypatch.delenv("GRAPH_REQUIRE_ADMIN_TOKEN", raising=False)
+    monkeypatch.delenv("NEXUS_GRAPH_ADMIN_TOKEN", raising=False)
+    with patch("app.database.init_db"), patch("app.database.close_db", new_callable=AsyncMock):
+        from app.main import create_app
+        assert create_app() is not None
+
+
 @pytest.mark.asyncio
 async def test_post_relation_weight_out_of_range_returns_422(client):
     res = await client.post(

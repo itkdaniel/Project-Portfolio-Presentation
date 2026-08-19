@@ -12,6 +12,7 @@ The built React frontend is served from /static/* when available.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -48,7 +49,26 @@ async def lifespan(app: FastAPI):
     logger.info("NexusGraph shut down cleanly")
 
 
+def enforce_admin_token_requirement() -> None:
+    """Fail fast when deployment requires an admin token but none is configured.
+
+    Set GRAPH_REQUIRE_ADMIN_TOKEN=1 (as production docker-compose does) to make
+    startup abort unless NEXUS_GRAPH_ADMIN_TOKEN holds a non-empty secret. This
+    prevents shipping the write API unauthenticated by accident.
+    """
+    required = os.environ.get("GRAPH_REQUIRE_ADMIN_TOKEN", "").strip().lower() in {"1", "true", "yes"}
+    token = os.environ.get("NEXUS_GRAPH_ADMIN_TOKEN", "").strip()
+    if required and not token:
+        raise RuntimeError(
+            "NEXUS_GRAPH_ADMIN_TOKEN is required but not set. "
+            "This deployment sets GRAPH_REQUIRE_ADMIN_TOKEN, so a non-empty admin "
+            "token must be provided to protect graph write endpoints. Set the "
+            "NEXUS_GRAPH_ADMIN_TOKEN environment variable to a secret value."
+        )
+
+
 def create_app() -> FastAPI:
+    enforce_admin_token_requirement()
     settings = get_settings()
 
     app = FastAPI(

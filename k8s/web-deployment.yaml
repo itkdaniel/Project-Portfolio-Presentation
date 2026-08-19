@@ -46,6 +46,10 @@ spec:
                 secretKeyRef:
                   name: nexus-secrets
                   key: redis-url
+            - name: SUB_APP_GRAPH_URL
+              value: http://nexus-graph-svc:8006
+            - name: NEXUS_GRAPH_URL
+              value: http://nexus-graph-svc:8006
           resources:
             requests:
               memory: "128Mi"

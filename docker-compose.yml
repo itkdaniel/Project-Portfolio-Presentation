@@ -66,6 +66,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       SUB_APP_QUANTUM_URL: http://nexus-quantum:8200
       NEXUS_QUANTUM_URL: http://nexus-quantum:8200
+      SUB_APP_GRAPH_URL: http://nexus-graph:8006
+      NEXUS_GRAPH_URL: http://nexus-graph:8006
     ports:
       - "5000:5000"
     depends_on:
@@ -157,6 +159,7 @@ services:
       - python-service
       - ai-service
       - nexus-quantum
+      - nexus-graph
     logging: *default-logging
 
   # ── Nexus Analytics (Platform API analytics microservice) ──────────────────
@@ -210,6 +213,34 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8200/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging: *default-logging
+
+  # ── Nexus Graph (knowledge graph microservice) ─────────────────────────────
+  nexus-graph:
+    build:
+      context: .
+      dockerfile: nexus-graph/Dockerfile
+    container_name: nexus_graph
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${PGUSER:-nexus}:${PGPASSWORD:-nexuspassword}@postgres:5432/${PGDATABASE:-nexusdb}
+      PORT: 8006
+      CORS_ORIGINS: '["*"]'
+      # Operators must provide a secret token; the service refuses to start without one
+      # (GRAPH_REQUIRE_ADMIN_TOKEN below). For local development use docker-compose.dev.yml,
+      # which supplies a dev-only default.
+      NEXUS_GRAPH_ADMIN_TOKEN: ${NEXUS_GRAPH_ADMIN_TOKEN:-}
+      GRAPH_REQUIRE_ADMIN_TOKEN: "1"
+    ports:
+      - "8006:8006"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8006/health')\""]
       interval: 30s
       timeout: 10s
       retries: 3
