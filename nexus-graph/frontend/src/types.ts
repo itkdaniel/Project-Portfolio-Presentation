@@ -10,6 +10,8 @@ export interface GraphNode {
   // runtime positional fields injected by react-force-graph-2d
   x?: number;
   y?: number;
+  fx?: number | null;
+  fy?: number | null;
 }
 
 export interface GraphEdge {

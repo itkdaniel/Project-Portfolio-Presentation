@@ -36,6 +36,7 @@ interface Props {
   clusterMode: boolean;
   clusters: ClustersMap;
   onNodeClick: (node: GraphNode) => void;
+  onEngineStop: () => void;
 }
 
 export default function GraphCanvas({
@@ -45,6 +46,7 @@ export default function GraphCanvas({
   clusterMode,
   clusters,
   onNodeClick,
+  onEngineStop,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = React.useState({ w: 800, h: 600 });
@@ -181,6 +183,7 @@ export default function GraphCanvas({
         linkDirectionalArrowRelPos={1}
         onNodeClick={(node: any) => onNodeClick(node as GraphNode)}
         onRenderFramePost={drawClusterOverlays}
+        onEngineStop={onEngineStop}
         backgroundColor="#0f0f18"
         cooldownTicks={120}
         d3AlphaDecay={0.02}

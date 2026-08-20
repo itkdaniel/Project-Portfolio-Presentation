@@ -4,6 +4,7 @@ import GraphCanvas from "./components/GraphCanvas";
 import DetailDrawer from "./components/DetailDrawer";
 import SearchBar from "./components/SearchBar";
 import ColorLegend from "./components/ColorLegend";
+import { getLayoutStorageKey, restoreGraphLayout, saveGraphLayout } from "./layout";
 import type {
   ClustersMap,
   GraphData,
@@ -27,23 +28,25 @@ export default function App() {
   const [offset, setOffset] = useState(0);
   const [entityTypes, setEntityTypes] = useState<string[]>([]);
   const graphRef = useRef<any>(null);
+  const layoutKey = getLayoutStorageKey(search, typeFilter);
 
   const load = useCallback(async (s: string, t: string | null, off: number, replace: boolean) => {
     setLoading(true);
     setError(null);
     try {
       const nodesRes = await fetchNodes(s || undefined, t || undefined, INITIAL_LIMIT, off);
-      const ids = nodesRes.nodes.map((n) => n.id);
+      const nodes = restoreGraphLayout(nodesRes.nodes, getLayoutStorageKey(s, t));
+      const ids = nodes.map((n) => n.id);
       const edgesRes = await fetchEdges(ids);
 
       const links = edgesRes.edges.map((e) => ({ ...e }));
 
       setGraphData((prev) => {
         if (replace) {
-          return { nodes: nodesRes.nodes, links };
+          return { nodes, links };
         }
         const existingNodeIds = new Set(prev.nodes.map((n) => n.id));
-        const newNodes = nodesRes.nodes.filter((n) => !existingNodeIds.has(n.id));
+        const newNodes = nodes.filter((n) => !existingNodeIds.has(n.id));
         // Merge links: keep all existing edges, append only new ones (deduplicate by id)
         const existingLinkIds = new Set(prev.links.map((l: any) => l.id));
         const dedupedNewLinks = links.filter((l: any) => !existingLinkIds.has(l.id));
@@ -88,14 +91,18 @@ export default function App() {
     }
   }, []);
 
+  const handleEngineStop = useCallback(() => {
+    saveGraphLayout(graphData.nodes, layoutKey);
+  }, [graphData.nodes, layoutKey]);
+
   const handleNeighborClick = useCallback(async (neighborId: string) => {
     try {
       const subgraph = await fetchSubgraph(neighborId);
-      const ids = subgraph.nodes.map((n) => n.id);
+      const restoredNodes = restoreGraphLayout(subgraph.nodes, layoutKey);
 
       setGraphData((prev) => {
         const existingIds = new Set(prev.nodes.map((n) => n.id));
-        const newNodes = subgraph.nodes.filter((n) => !existingIds.has(n.id));
+        const newNodes = restoredNodes.filter((n) => !existingIds.has(n.id));
         const allNodes = [...prev.nodes, ...newNodes];
         const allIds = new Set(allNodes.map((n) => n.id));
         const newLinks = subgraph.edges
@@ -117,7 +124,7 @@ export default function App() {
     } catch {
       // ignore
     }
-  }, [graphData.nodes]);
+  }, [graphData.nodes, layoutKey]);
 
   const handleToggleCluster = useCallback(async () => {
     if (!clusterMode) {
@@ -245,6 +252,7 @@ export default function App() {
           clusterMode={clusterMode}
           clusters={clusters}
           onNodeClick={handleNodeClick}
+          onEngineStop={handleEngineStop}
         />
 
         <ColorLegend entityTypes={entityTypes} nodes={graphData.nodes} />
