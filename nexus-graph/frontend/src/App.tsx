@@ -4,7 +4,12 @@ import GraphCanvas from "./components/GraphCanvas";
 import DetailDrawer from "./components/DetailDrawer";
 import SearchBar from "./components/SearchBar";
 import ColorLegend from "./components/ColorLegend";
-import { getLayoutStorageKey, restoreGraphLayout, saveGraphLayout } from "./layout";
+import {
+  clearGraphLayout,
+  getLayoutStorageKey,
+  restoreGraphLayout,
+  saveGraphLayout,
+} from "./layout";
 import type {
   ClustersMap,
   GraphData,
@@ -27,6 +32,7 @@ export default function App() {
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [entityTypes, setEntityTypes] = useState<string[]>([]);
+  const [layoutResetVersion, setLayoutResetVersion] = useState(0);
   const graphRef = useRef<any>(null);
   const layoutKey = getLayoutStorageKey(search, typeFilter);
 
@@ -142,6 +148,27 @@ export default function App() {
     graphRef.current?.zoomToFit(400, 40);
   }, []);
 
+  const handleResetLayout = useCallback(() => {
+    clearGraphLayout(layoutKey);
+
+    // Force-graph mutates nodes with runtime coordinates. Clone the nodes
+    // without those coordinates so the next simulation starts from scratch.
+    setGraphData((prev) => ({
+      ...prev,
+      nodes: prev.nodes.map((node) => {
+        const resetNode = { ...node };
+        delete resetNode.x;
+        delete resetNode.y;
+        delete resetNode.fx;
+        delete resetNode.fy;
+        delete (resetNode as any).vx;
+        delete (resetNode as any).vy;
+        return resetNode;
+      }),
+    }));
+    setLayoutResetVersion((version) => version + 1);
+  }, [layoutKey]);
+
   const hasMore = offset + INITIAL_LIMIT < total;
 
   return (
@@ -202,6 +229,18 @@ export default function App() {
           ⊕ Fit
         </button>
 
+        <button
+          data-testid="button-reset-layout"
+          onClick={handleResetLayout}
+          style={{
+            background: "#1a1a2e", color: "#fbbf24",
+            border: "1px solid #59451b", borderRadius: 6,
+            padding: "6px 14px", fontSize: 13, cursor: "pointer",
+          }}
+        >
+          ↺ Reset layout
+        </button>
+
         {hasMore && !loading && (
           <button
             data-testid="button-load-more"
@@ -251,6 +290,7 @@ export default function App() {
           search={search}
           clusterMode={clusterMode}
           clusters={clusters}
+          resetSimulationToken={layoutResetVersion}
           onNodeClick={handleNodeClick}
           onEngineStop={handleEngineStop}
         />

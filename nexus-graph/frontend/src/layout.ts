@@ -82,3 +82,18 @@ export function saveGraphLayout(nodes: GraphNode[], storageKey: string): void {
     // Browser storage is optional and must not break graph interactions.
   }
 }
+
+/**
+ * Remove the saved layout for one graph query/filter combination.
+ * Browser storage is optional, so an unavailable storage implementation
+ * should not prevent the graph from being reset.
+ */
+export function clearGraphLayout(storageKey: string): void {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.removeItem(storageKey);
+  } catch {
+    // Browser storage is optional and must not break graph interactions.
+  }
+}

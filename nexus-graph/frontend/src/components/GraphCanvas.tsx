@@ -35,6 +35,7 @@ interface Props {
   search: string;
   clusterMode: boolean;
   clusters: ClustersMap;
+  resetSimulationToken: number;
   onNodeClick: (node: GraphNode) => void;
   onEngineStop: () => void;
 }
@@ -45,6 +46,7 @@ export default function GraphCanvas({
   search,
   clusterMode,
   clusters,
+  resetSimulationToken,
   onNodeClick,
   onEngineStop,
 }: Props) {
@@ -59,6 +61,11 @@ export default function GraphCanvas({
     if (containerRef.current) obs.observe(containerRef.current);
     return () => obs.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (resetSimulationToken === 0) return;
+    graphRef.current?.d3ReheatSimulation?.();
+  }, [graphRef, resetSimulationToken]);
 
   const drawNode = useCallback(
     (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
