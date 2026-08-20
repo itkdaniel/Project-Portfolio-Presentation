@@ -13,6 +13,7 @@ import ResumePage from "@/pages/ResumePage";
 import RegisterPage from "@/pages/RegisterPage";
 import LoginPage from "@/pages/LoginPage";
 import NotificationsPage from "@/pages/NotificationsPage";
+import ScopeRequestsPage from "@/pages/ScopeRequestsPage";
 import AdminApprovalsPage from "@/pages/AdminApprovalsPage";
 import AdminScopesPage from "@/pages/AdminScopes";
 import DocsPage from "@/pages/DocsPage";
@@ -42,6 +43,7 @@ function Router() {
       <Route path="/register" component={RegisterPage}/>
       <Route path="/login" component={LoginPage}/>
       <Route path="/notifications" component={NotificationsPage}/>
+      <Route path="/scope-requests" component={ScopeRequestsPage}/>
       <Route path="/admin/approvals" component={AdminApprovalsPage}/>
       <Route path="/admin/scopes" component={AdminScopesPage}/>
       <Route path="/docs" component={DocsPage}/>

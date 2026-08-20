@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText, Activity, BookOpen, LogIn, UserPlus, LogOut, ClipboardCheck, Shield, GitBranch, Search, Brain, BarChart2, Atom, Bitcoin, ChevronDown, Network } from "lucide-react";
+import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText, Activity, BookOpen, LogIn, UserPlus, LogOut, ClipboardCheck, Shield, GitBranch, Search, Brain, BarChart2, Atom, Bitcoin, ChevronDown, Network, FileKey } from "lucide-react";
 import { NotificationBell } from "./NotificationBell";
 
 interface MeUser { id: string; username: string; email: string; role?: string; fullName?: string; profilePictureUrl?: string; }
@@ -131,6 +131,11 @@ export function Navbar() {
           <Link href="/settings" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-settings">
             <Settings className="w-4 h-4" /> Settings
           </Link>
+          {me && (
+            <Link href="/scope-requests" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-scope-requests">
+              <FileKey className="w-4 h-4" /> Access
+            </Link>
+          )}
           {me?.role === "admin" && (
             <>
               <Link href="/admin/approvals" className="flex items-center gap-1.5 text-sm font-medium text-yellow-400/80 hover:text-yellow-400 transition-colors" data-testid="nav-admin-approvals">
@@ -240,6 +245,11 @@ export function Navbar() {
           <Link href="/settings" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
             <Settings className="w-4 h-4" /> Settings
           </Link>
+          {me && (
+            <Link href="/scope-requests" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-scope-requests-mobile">
+              <FileKey className="w-4 h-4" /> Scope Access
+            </Link>
+          )}
           {me?.role === "admin" && (
             <>
               <Link href="/admin/approvals" className="p-2 text-sm font-medium text-yellow-400/80 hover:text-yellow-400 flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-admin-approvals-mobile">

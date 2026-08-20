@@ -263,10 +263,14 @@ export default function NotificationsPage() {
                         <span className="text-xs text-muted-foreground/60">
                           {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
                         </span>
-                        {n.link && (
-                          <a href={n.link} className="text-xs text-primary hover:underline" onClick={e => e.stopPropagation()}>
-                            View →
-                          </a>
+                        {(n.link || n.type === "scope_update") && (
+                          <Link
+                            href={n.type === "scope_update" ? "/scope-requests" : n.link!}
+                            className="text-xs text-primary hover:underline"
+                            onClick={e => e.stopPropagation()}
+                          >
+                            {n.type === "scope_update" ? "Review request →" : "View →"}
+                          </Link>
                         )}
                       </div>
                     </div>
