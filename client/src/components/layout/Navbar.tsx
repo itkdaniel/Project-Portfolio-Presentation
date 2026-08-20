@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText, Activity, BookOpen, LogIn, UserPlus, LogOut, ClipboardCheck, Shield, GitBranch, Search, Brain, BarChart2, Atom, Bitcoin, ChevronDown } from "lucide-react";
+import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText, Activity, BookOpen, LogIn, UserPlus, LogOut, ClipboardCheck, Shield, GitBranch, Search, Brain, BarChart2, Atom, Bitcoin, ChevronDown, Network } from "lucide-react";
 import { NotificationBell } from "./NotificationBell";
 
 interface MeUser { id: string; username: string; email: string; role?: string; fullName?: string; profilePictureUrl?: string; }
@@ -86,6 +86,9 @@ export function Navbar() {
           </Link>
           <Link href="/search" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-search">
             <Search className="w-4 h-4" /> Search
+          </Link>
+          <Link href="/graph" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-graph">
+            <Network className="w-4 h-4" /> Graph
           </Link>
           <Link href="/ai" className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-ai">
             <Brain className="w-4 h-4" /> AI
@@ -198,6 +201,9 @@ export function Navbar() {
           </Link>
           <Link href="/search" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-search-mobile">
             <Search className="w-4 h-4" /> Search
+          </Link>
+          <Link href="/graph" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-graph-mobile">
+            <Network className="w-4 h-4" /> Graph
           </Link>
           <Link href="/ai" className="p-2 text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-ai-mobile">
             <Brain className="w-4 h-4" /> AI

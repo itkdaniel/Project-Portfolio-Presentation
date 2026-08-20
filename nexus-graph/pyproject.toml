@@ -33,6 +33,9 @@ dev = [
     "pyyaml>=6.0",
     "nexus-shared",
 ]
+docs = [
+    "sphinx>=7.3.0",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

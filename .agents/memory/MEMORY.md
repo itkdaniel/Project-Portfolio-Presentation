@@ -1,0 +1,1 @@
+- [GitHub repository alignment](github-repository-alignment.md) — verify the external repository contains the current platform before opening feature PRs or releases.

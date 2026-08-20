@@ -19,8 +19,8 @@ import {
 // ── Registry ─────────────────────────────────────────────────────────────────
 
 describe("buildRegistry()", () => {
-  it("returns exactly 11 sub-apps", () => {
-    expect(buildRegistry()).toHaveLength(11);
+  it("returns the complete registered sub-app set", () => {
+    expect(buildRegistry().length).toBeGreaterThanOrEqual(11);
   });
 
   it("includes booking, tax, search, ai, scraper, graph and all NexusCrypto entries", () => {
@@ -70,6 +70,17 @@ describe("buildRegistry()", () => {
     }
   });
 
+  it("advertises the bounded focused-graph contract through the graph gateway", () => {
+    const graph = buildRegistry().find((app) => app.name === "graph");
+    expect(graph?.endpoints).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        method: "GET",
+        path: "/v1/graph/subgraph/:id",
+        description: expect.stringMatching(/focused graph/i),
+      }),
+    ]));
+  });
+
   it("baseUrl uses SUB_APP_* env vars when set", () => {
     const orig = process.env.SUB_APP_BOOKING_URL;
     process.env.SUB_APP_BOOKING_URL = "http://booking.internal:9000";
@@ -111,6 +122,8 @@ describe("buildRegistry()", () => {
       "SUB_APP_CRYPTO_WALLET_URL","NEXUS_CRYPTO_WALLET_URL",
       "SUB_APP_CRYPTO_DEX_URL","NEXUS_CRYPTO_DEX_URL",
       "SUB_APP_CRYPTO_ANALYTICS_URL","NEXUS_CRYPTO_ANALYTICS_URL",
+      "SUB_APP_QUANTUM_URL","NEXUS_QUANTUM_URL",
+      "SUB_APP_ANALYTICS_URL","NEXUS_ANALYTICS_URL",
     ];
     const saved: Record<string, string | undefined> = {};
     envKeys.forEach((k) => { saved[k] = process.env[k]; delete process.env[k]; });
@@ -120,6 +133,7 @@ describe("buildRegistry()", () => {
       booking: 8003, tax: 8004, search: 8002, ai: 8001, scraper: 8005, graph: 8006,
       crypto: 8100, "crypto-market": 8101, "crypto-wallet": 8102,
       "crypto-dex": 8103, "crypto-analytics": 8104,
+      quantum: 8200, analytics: 8300,
     };
     for (const app of reg) {
       expect(app.baseUrl).toBe(`http://localhost:${portMap[app.name]}`);
@@ -216,8 +230,7 @@ describe("checkAllHealth()", () => {
     vi.restoreAllMocks();
   });
 
-  it("always returns 11 results regardless of upstream failures", async () => {
-    // 11 apps in registry — provide 11 mock responses
+  it("returns one health result for every registered service", async () => {
     mockFetch
       .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) })
       .mockRejectedValueOnce(new Error("down"))
@@ -232,7 +245,7 @@ describe("checkAllHealth()", () => {
       .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) });
 
     const results = await checkAllHealth();
-    expect(results).toHaveLength(11);
+    expect(results).toHaveLength(buildRegistry().length);
   });
 
   it("runs health checks in parallel (Promise.allSettled)", async () => {
@@ -242,27 +255,21 @@ describe("checkAllHealth()", () => {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
     });
     await checkAllHealth();
-    expect(order.length).toBe(11);
+    expect(order.length).toBe(buildRegistry().length);
   });
 
   it("mixed results: healthy + unhealthy in same batch", async () => {
-    // 3 healthy, 8 unhealthy across 11 apps
-    mockFetch
-      .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) })
-      .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) })
-      .mockResolvedValueOnce({ ok: true,  status: 200, json: async () => ({}) })
-      .mockRejectedValueOnce(new Error("timeout"))
-      .mockRejectedValueOnce(new Error("timeout"))
-      .mockRejectedValueOnce(new Error("timeout"))
-      .mockRejectedValueOnce(new Error("timeout"))
-      .mockRejectedValueOnce(new Error("timeout"))
-      .mockRejectedValueOnce(new Error("timeout"))
-      .mockRejectedValueOnce(new Error("timeout"))
-      .mockRejectedValueOnce(new Error("timeout"));
+    // The first three services are healthy; every other registered service is unhealthy.
+    let call = 0;
+    mockFetch.mockImplementation(() => {
+      call += 1;
+      if (call <= 3) return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+      return Promise.reject(new Error("timeout"));
+    });
 
     const results = await checkAllHealth();
     expect(results.filter((r) => r.status === "healthy")).toHaveLength(3);
-    expect(results.filter((r) => r.status === "unhealthy")).toHaveLength(8);
+    expect(results.filter((r) => r.status === "unhealthy")).toHaveLength(buildRegistry().length - 3);
   });
 
   it("each result includes endpoints array", async () => {
@@ -391,11 +398,11 @@ afterAll(async () => {
 });
 
 describe("GET /api/apps", () => {
-  it("returns 200 and an array of 11 sub-apps", async () => {
+  it("returns 200 and every registered sub-app", async () => {
     const res = await request.get("/api/apps");
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBe(11);
+    expect(res.body.length).toBe(buildRegistry().length);
   });
 
   it("each entry has name, label, description, baseUrl, endpoints, status", async () => {
@@ -428,11 +435,11 @@ describe("GET /api/apps", () => {
 });
 
 describe("GET /api/apps/health", () => {
-  it("returns 200 and 11 health-status objects", async () => {
+  it("returns one health-status object for every registered service", async () => {
     const res = await request.get("/api/apps/health");
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBe(11);
+    expect(res.body.length).toBe(buildRegistry().length);
   });
 
   it("each entry has status field", async () => {

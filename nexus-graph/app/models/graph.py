@@ -14,11 +14,21 @@ class GraphNode(BaseModel):
     relationCount: int = 0
 
 
+class GraphLimits(BaseModel):
+    """The server-enforced bounds applied to a graph response."""
+
+    maxDepth: int | None = None
+    degreeLimit: int | None = None
+    nodeLimit: int | None = None
+    edgeLimit: int | None = None
+
+
 class GraphNodeDetail(GraphNode):
     confidence: float | None = None
     trendScore: float = 0.0
     scrapedAt: str | None = None
-    neighbors: list[NeighborNode] = []
+    neighbors: list[NeighborNode] = Field(default_factory=list)
+    neighborsTruncated: bool = False
 
 
 class NeighborNode(BaseModel):
@@ -43,10 +53,17 @@ class NodesResponse(BaseModel):
     total: int
     limit: int
     offset: int
+    returned: int = 0
+    hasMore: bool = False
+    nextOffset: int | None = None
+    truncated: bool = False
 
 
 class EdgesResponse(BaseModel):
     edges: list[GraphEdge]
+    returned: int = 0
+    truncated: bool = False
+    edgeLimit: int | None = None
 
 
 class ClustersResponse(BaseModel):
@@ -54,11 +71,32 @@ class ClustersResponse(BaseModel):
     clusterCount: int
     cachedUntil: str | None = None
     algorithm: str = "louvain"
+    nodeCount: int = 0
+    edgeCount: int = 0
+    truncated: bool = False
+    limits: GraphLimits = Field(default_factory=GraphLimits)
+
+
+class ClusterSummary(BaseModel):
+    id: int
+    nodeCount: int
+    representativeId: str | None = None
 
 
 class SubgraphResponse(BaseModel):
     nodes: list[GraphNode]
     edges: list[GraphEdge]
+    rootId: str | None = None
+    depth: int = 1
+    returnedNodeCount: int = 0
+    returnedEdgeCount: int = 0
+    truncated: bool = False
+    displayMode: str = "nodes"
+    clusters: dict[str, int] = Field(default_factory=dict)
+    clusterSummaries: list[ClusterSummary] = Field(default_factory=list)
+    canExpand: bool = False
+    nextDepth: int | None = None
+    limits: GraphLimits = Field(default_factory=GraphLimits)
 
 
 class CreateRelationRequest(BaseModel):

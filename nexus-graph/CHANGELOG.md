@@ -8,6 +8,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+- Bounded focused-graph API responses with observable traversal, node, edge, and continuation limits.
+- Main-platform entity graph explorer through the service-manager gateway.
+- Sphinx documentation source and GitHub Pages publication workflow.
+
 ---
 
 ## [0.1.0] — 2024-01-15

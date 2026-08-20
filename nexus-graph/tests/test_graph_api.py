@@ -235,6 +235,27 @@ async def test_get_subgraph_returns_200(client):
 
 
 @pytest.mark.asyncio
+async def test_get_subgraph_passes_progressive_bounds(client):
+    mock_resp = SubgraphResponse(nodes=[], edges=[], rootId="n1", depth=2)
+    with patch("app.routers.graph.engine.get_subgraph", new_callable=AsyncMock, return_value=mock_resp) as mock_fn:
+        res = await client.get("/v1/graph/subgraph/n1?depth=2&degree_limit=12&node_limit=30&edge_limit=40")
+    assert res.status_code == 200
+    mock_fn.assert_called_once_with(
+        "n1",
+        depth=2,
+        degree_limit=12,
+        node_limit=30,
+        edge_limit=40,
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_subgraph_rejects_degree_over_hard_limit(client):
+    res = await client.get("/v1/graph/subgraph/n1?degree_limit=101")
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_get_subgraph_404(client):
     with patch("app.routers.graph.engine.get_subgraph", new_callable=AsyncMock, return_value=None):
         res = await client.get("/v1/graph/subgraph/nonexistent")

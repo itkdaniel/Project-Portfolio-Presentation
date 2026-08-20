@@ -26,6 +26,7 @@ import CryptoMarketPage from "@/pages/CryptoMarketPage";
 import CryptoWalletPage from "@/pages/CryptoWalletPage";
 import CryptoDEXPage from "@/pages/CryptoDEXPage";
 import CryptoAnalyticsPage from "@/pages/CryptoAnalyticsPage";
+import GraphPage from "@/pages/GraphPage";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -47,6 +48,7 @@ function Router() {
       <Route path="/architecture" component={ArchitecturePage}/>
       <Route path="/quantum" component={QuantumPage}/>
       <Route path="/search" component={SearchPage}/>
+      <Route path="/graph" component={GraphPage}/>
       <Route path="/ai" component={AIPage}/>
       <Route path="/analytics" component={AnalyticsPage}/>
       <Route path="/crypto" component={CryptoPage}/>

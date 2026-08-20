@@ -202,6 +202,7 @@ Do **not** use these credentials in any internet-accessible environment.
 ## Documentation
 
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — branch strategy, PR process, versioning
+- [NexusGraph documentation source](nexus-graph/docs/source/index.rst) — setup, architecture, API limits, clustering, and troubleshooting; the Pages URL is linked here after a verified deployment
 - [`CHANGELOG.md`](CHANGELOG.md) — platform release history
 - [`apps/nexus-booking/CHANGELOG.md`](apps/nexus-booking/CHANGELOG.md)
 - [`apps/nexus-tax/CHANGELOG.md`](apps/nexus-tax/CHANGELOG.md)

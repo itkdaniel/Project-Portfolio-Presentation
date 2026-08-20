@@ -13,8 +13,18 @@ class Settings(BaseSettings):
 
     database_url: str = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/nexus")
 
-    # Cluster cache TTL in seconds (10 minutes)
+    # Bounded graph-read settings. These are intentionally server-controlled:
+    # browser query parameters can request less data, never more.
     cluster_cache_ttl: int = 600
+    graph_max_search_limit: int = 500
+    graph_max_edge_ids: int = 200
+    graph_max_subgraph_depth: int = 2
+    graph_max_subgraph_degree: int = 40
+    graph_max_subgraph_nodes: int = 200
+    graph_max_subgraph_edges: int = 400
+    graph_display_threshold: int = 80
+    graph_cluster_max_nodes: int = 1000
+    graph_cluster_max_edges: int = 3000
 
     cors_origins: list[str] = ["*"]
 

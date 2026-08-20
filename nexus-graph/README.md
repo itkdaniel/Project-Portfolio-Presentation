@@ -3,6 +3,12 @@
 Interactive force-directed knowledge graph built on top of the NexusConsult entity database.
 Visualizes entities and relationships extracted by NexusScraper with Louvain community detection.
 
+The supported product explorer is the main-platform **Graph** page (`/graph`),
+which uses the service-manager gateway instead of exposing this service port to
+the browser. The Sphinx source is in [`docs/`](docs/); see
+[`docs/source/workflow.rst`](docs/source/workflow.rst) for the approved Pages
+publication and public-link verification flow.
+
 ## Architecture
 
 ```
