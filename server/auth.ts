@@ -65,6 +65,7 @@ const DATA_RATING_SEED = [
 
 // Simple HMAC-based token — no extra dependencies needed
 const JWT_SECRET = process.env.JWT_SECRET || "nexus-dev-secret-change-in-prod";
+export const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 function base64url(str: string) {
   return Buffer.from(str).toString("base64url");
@@ -85,8 +86,8 @@ function verify(token: string): Record<string, any> | null {
   if (sig !== expected) return null;
   try {
     const payload = JSON.parse(Buffer.from(body, "base64url").toString());
-    // 24-hour expiry
-    if (payload.iat && Date.now() / 1000 - payload.iat > 86400) return null;
+    if (typeof payload.iat !== "number" || !Number.isFinite(payload.iat)) return null;
+    if (Date.now() >= (payload.iat * 1000) + TOKEN_TTL_MS) return null;
     return payload;
   } catch {
     return null;
@@ -101,8 +102,24 @@ export function generateToken(userId: string, role: string): string {
   return sign({ sub: userId, role });
 }
 
+export interface VerifiedToken {
+  id: string;
+  role: string;
+  expiresAt: number;
+}
+
+export function verifyToken(token: string): VerifiedToken | null {
+  const payload = verify(token);
+  if (!payload || typeof payload.sub !== "string") return null;
+  return {
+    id: payload.sub,
+    role: typeof payload.role === "string" ? payload.role : "user",
+    expiresAt: (payload.iat * 1000) + TOKEN_TTL_MS,
+  };
+}
+
 export interface AuthenticatedRequest extends Request {
-  user?: { id: string; role: string };
+  user?: VerifiedToken;
 }
 
 export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
@@ -110,9 +127,9 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
   if (!auth?.startsWith("Bearer ")) {
     return res.status(401).json({ message: "Authentication required" });
   }
-  const payload = verify(auth.slice(7));
-  if (!payload) return res.status(401).json({ message: "Invalid or expired token" });
-  req.user = { id: payload.sub, role: payload.role };
+  const user = verifyToken(auth.slice(7));
+  if (!user) return res.status(401).json({ message: "Invalid or expired token" });
+  req.user = user;
   next();
 }
 

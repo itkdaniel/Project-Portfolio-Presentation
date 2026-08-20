@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Bell, CheckCheck, Trash2, Info, CheckCircle, AlertTriangle, XCircle, RefreshCw } from "lucide-react";
 import { Link } from "wouter";
 import { formatDistanceToNow } from "date-fns";
+import { usePubSub } from "@/lib/websocket";
 
 interface AppNotification {
   id: string;
@@ -87,6 +88,20 @@ export default function NotificationsPage() {
     refetchInterval: 15_000,
   });
   const notifs = resp?.notifications ?? [];
+
+  usePubSub(isAuthenticated ? "notification:created" : undefined, (notification: AppNotification) => {
+    qc.setQueryData<{ unreadCount: number; notifications: AppNotification[] }>(
+      ["/api/notifications/all"],
+      (current) => {
+        if (!current || current.notifications.some((n) => n.id === notification.id)) return current;
+        return {
+          unreadCount: current.unreadCount + (notification.read ? 0 : 1),
+          notifications: [notification, ...current.notifications],
+        };
+      },
+    );
+    qc.invalidateQueries({ queryKey: ["/api/notifications/all"] });
+  });
 
   const markRead = useMutation({
     mutationFn: (id: string) => apiFetch(`/api/notifications/${id}/read`, { method: "PATCH" }),

@@ -1,1 +1,2 @@
 - [GitHub repository alignment](github-repository-alignment.md) — verify the external repository contains the current platform before opening feature PRs or releases.
+- [WebSocket credential handling](websocket-credential-handling.md) — authenticate real-time sessions with one-time scoped tickets, never reusable bearer tokens in URLs.

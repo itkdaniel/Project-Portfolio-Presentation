@@ -2,7 +2,9 @@
  * tests/unit/notifications.test.ts
  * Notification & Scope Approval System — API tests
  */
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
+import WebSocket from "ws";
+import { generateToken, TOKEN_TTL_MS } from "../../server/auth";
 
 const BASE = "http://localhost:5000";
 
@@ -47,6 +49,60 @@ async function del(path: string, token?: string) {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   return { status: res.status, body: await res.json() };
+}
+
+async function createRealtimeTicket(token: string) {
+  const response = await fetch(`${BASE}/api/realtime-ticket`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(`Unable to create real-time ticket: ${response.status}`);
+  return (await response.json() as { ticket: string }).ticket;
+}
+
+function connectWebSocketWithTicket(ticket: string) {
+  return new Promise<{ socket: WebSocket; messages: any[] }>((resolve, reject) => {
+    const socket = new WebSocket("ws://localhost:5000/ws", ["nexus-ticket", ticket]);
+    const messages: any[] = [];
+    socket.on("message", (data) => messages.push(JSON.parse(data.toString())));
+    socket.once("open", () => resolve({ socket, messages }));
+    socket.once("error", reject);
+  });
+}
+
+function expectRejectedWebSocket(ticket: string) {
+  return new Promise<number>((resolve, reject) => {
+    const socket = new WebSocket("ws://localhost:5000/ws", ["nexus-ticket", ticket]);
+    const timeout = setTimeout(() => reject(new Error("Invalid WebSocket ticket was not rejected")), 4_000);
+    socket.once("close", (code) => {
+      clearTimeout(timeout);
+      resolve(code);
+    });
+    socket.once("error", reject);
+  });
+}
+
+async function connectWebSocket(token: string) {
+  return connectWebSocketWithTicket(await createRealtimeTicket(token));
+}
+
+async function waitForNotification(messages: any[]) {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const notification = messages.find((message) => message.type === "notification:created");
+    if (notification) return notification;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return undefined;
+}
+
+function waitForClose(socket: WebSocket) {
+  return new Promise<number>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("WebSocket did not close when its token expired")), 4_000);
+    socket.once("close", (code) => {
+      clearTimeout(timeout);
+      resolve(code);
+    });
+  });
 }
 
 beforeAll(async () => {
@@ -191,6 +247,55 @@ describe("Notifications", () => {
   it("DELETE /api/notifications/clear-read — clears all read notifications", async () => {
     const { status } = await del("/api/notifications/clear-read", userToken);
     expect(status).toBe(200);
+  });
+});
+
+describe("Real-time notifications", () => {
+  it("delivers only to the matching live session and excludes an expired session", async () => {
+    const [target, other] = await Promise.all([
+      connectWebSocket(userToken),
+      connectWebSocket(adminToken),
+    ]);
+
+    const originalNow = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(originalNow - TOKEN_TTL_MS - 1);
+    const expiredToken = generateToken(userId, "user");
+    vi.restoreAllMocks();
+    const expiredTicketResponse = await fetch(`${BASE}/api/realtime-ticket`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${expiredToken}` },
+    });
+    expect(expiredTicketResponse.status).toBe(401);
+    const rejected = expectRejectedWebSocket("invalid-ticket");
+
+    const expiryBoundary = Math.ceil(Date.now() / 1_000) * 1_000 + 2_000;
+    vi.spyOn(Date, "now").mockReturnValue(expiryBoundary - TOKEN_TTL_MS);
+    const expiringToken = generateToken(userId, "user");
+    vi.restoreAllMocks();
+    const expiring = await connectWebSocket(expiringToken);
+
+    try {
+      expect(await rejected).toBe(4001);
+      expect(await waitForClose(expiring.socket)).toBe(4001);
+
+      const { status } = await post("/api/notification-prefs/test", {}, userToken);
+      expect(status).toBe(200);
+
+      const targetEvent = await waitForNotification(target.messages);
+      expect(targetEvent?.payload).toMatchObject({
+        userId,
+        title: "Test Notification",
+        body: "This is a test in-app notification from NexusConsult.",
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(other.messages.some((message) => message.type === "notification:created")).toBe(false);
+      expect(expiring.messages.some((message) => message.type === "notification:created")).toBe(false);
+    } finally {
+      target.socket.close();
+      other.socket.close();
+      expiring.socket.close();
+    }
   });
 });
 

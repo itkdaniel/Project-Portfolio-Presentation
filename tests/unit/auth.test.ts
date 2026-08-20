@@ -1,7 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { hashPassword, generateToken } from "../../server/auth";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { hashPassword, generateToken, TOKEN_TTL_MS, verifyToken } from "../../server/auth";
 
 describe("Auth utilities", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   describe("hashPassword", () => {
     it("returns a 64-character hex string", () => {
       const hash = hashPassword("MySecurePass!");
@@ -38,6 +42,15 @@ describe("Auth utilities", () => {
       const [, body] = token.split(".");
       const payload = JSON.parse(Buffer.from(body, "base64url").toString());
       expect(payload.role).toBe("admin");
+    });
+
+    it("expires tokens after 24 hours", () => {
+      const issuedAt = Date.now();
+      vi.spyOn(Date, "now").mockReturnValue(issuedAt);
+      const token = generateToken("user-expiring", "user");
+
+      vi.spyOn(Date, "now").mockReturnValue(issuedAt + TOKEN_TTL_MS);
+      expect(verifyToken(token)).toBeNull();
     });
   });
 });

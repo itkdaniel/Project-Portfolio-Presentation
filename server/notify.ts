@@ -11,6 +11,7 @@ import { users, userNotificationPrefs, notifications } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { log } from "./logger";
 import { sendEmail } from "./email";
+import { pubsub } from "./pubsub";
 
 export interface NotifyPayload {
   type?:  string;   // "info" | "success" | "warning" | "error" | "scope_request" | "scope_update"
@@ -74,14 +75,15 @@ export async function sendNotification(userId: string, payload: NotifyPayload): 
 
   // 1. In-app notification (default enabled)
   if (prefs.inApp) {
-    await db.insert(notifications).values({
+    const [notification] = await db.insert(notifications).values({
       userId,
       type:  payload.type ?? "info",
       title: payload.title,
       body:  payload.body,
       read:  false,
       link:  payload.link,
-    });
+    }).returning();
+    pubsub.publishToUser(userId, "notification:created", notification);
   }
 
   // 2. Email
@@ -174,13 +176,14 @@ export async function testSendNotification(userId: string): Promise<{ channels: 
   const channels: string[] = [];
 
   if (prefs.inApp) {
-    await db.insert(notifications).values({
+    const [notification] = await db.insert(notifications).values({
       userId,
       type:  "info",
       title: "Test Notification",
       body:  "This is a test in-app notification from NexusConsult.",
       read:  false,
-    });
+    }).returning();
+    pubsub.publishToUser(userId, "notification:created", notification);
     channels.push("in_app");
   }
 

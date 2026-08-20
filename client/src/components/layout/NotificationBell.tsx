@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bell, CheckCheck, X, Info, CheckCircle, AlertTriangle, XCircle } from "lucide-react";
 import { Link } from "wouter";
 import { formatDistanceToNow } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
+import { usePubSub } from "@/lib/websocket";
 
 interface AppNotification {
   id: string;
@@ -48,6 +50,7 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
+  const { toast } = useToast();
 
   const { data: resp } = useQuery<{ unreadCount: number; notifications: AppNotification[] }>({
     queryKey: ["/api/notifications"],
@@ -57,6 +60,24 @@ export function NotificationBell() {
   });
   const notifs  = resp?.notifications ?? [];
   const unreadCount = resp?.unreadCount ?? 0;
+
+  usePubSub(token ? "notification:created" : undefined, (notification: AppNotification) => {
+    qc.setQueryData<{ unreadCount: number; notifications: AppNotification[] }>(
+      ["/api/notifications"],
+      (current) => {
+        if (!current || current.notifications.some((n) => n.id === notification.id)) return current;
+        return {
+          unreadCount: current.unreadCount + (notification.read ? 0 : 1),
+          notifications: [notification, ...current.notifications].slice(0, 20),
+        };
+      },
+    );
+    qc.invalidateQueries({ queryKey: ["/api/notifications"] });
+    toast({
+      title: notification.title,
+      description: notification.body,
+    });
+  });
 
   const markRead = useMutation({
     mutationFn: (id: string) =>

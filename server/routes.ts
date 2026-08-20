@@ -238,6 +238,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ ...safe, corpRoleId: safe.corpRoleId ?? 1 });
   });
 
+  app.post("/api/realtime-ticket", requireAuth as any, (req: AuthenticatedRequest, res: Response) => {
+    const ticket = pubsub.createConnectionTicket(req.user!.id, req.user!.expiresAt);
+    return res.json({ ticket });
+  });
+
   // ── User Profile ─────────────────────────────────────────────────────────
 
   // PATCH /api/users/profile — update extended profile fields (fullName, mobile, location, bio, profilePictureUrl, position)
