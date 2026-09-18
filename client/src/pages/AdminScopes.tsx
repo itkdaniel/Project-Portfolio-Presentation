@@ -6,6 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
+  AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Link } from "wouter";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -82,9 +87,68 @@ function RevokeButton({ grant }: { grant: AdminGrantedScope }) {
   );
 }
 
+function RevokeAllButton({ grant, grantCount }: { grant: AdminGrantedScope; grantCount: number }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const revokeAll = useMutation<{ revoked: boolean; revokedCount: number }>({
+    mutationFn: () => apiFetch(`/api/admin/granted-scopes/user/${grant.userId}`, { method: "DELETE" }),
+    onSuccess: ({ revokedCount }) => {
+      qc.invalidateQueries({ queryKey: ["/api/admin/granted-scopes"] });
+      toast({
+        title: "All scopes revoked",
+        description: `Revoked ${revokedCount} ${revokedCount === 1 ? "grant" : "grants"} for ${grant.email ?? grant.username ?? grant.userId}`,
+      });
+    },
+    onError: (e: Error) => toast({ title: "Bulk revoke failed", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="gap-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 px-2 text-xs"
+          disabled={revokeAll.isPending}
+          data-testid={`btn-revoke-all-${grant.userId}`}
+        >
+          {revokeAll.isPending
+            ? <RefreshCw className="w-3 h-3 animate-spin" />
+            : <ShieldOff className="w-3 h-3" />}
+          Revoke all
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Revoke all AI access?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This will revoke all {grantCount} active AI access {grantCount === 1 ? "grant" : "grants"} for{" "}
+            {grant.email ?? grant.username ?? grant.userId}. This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-red-600 text-white hover:bg-red-700"
+            onClick={() => revokeAll.mutate()}
+            data-testid={`confirm-revoke-all-${grant.userId}`}
+          >
+            Revoke all
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 // ── ScopeRow ──────────────────────────────────────────────────────────────────
 
-function ScopeRow({ grant }: { grant: AdminGrantedScope }) {
+function ScopeRow({ grant, grantCount, showRevokeAll }: {
+  grant: AdminGrantedScope;
+  grantCount: number;
+  showRevokeAll: boolean;
+}) {
   const displayName = grant.fullName || grant.username || grant.userId.slice(0, 8) + "…";
   const email = grant.email ?? "—";
 
@@ -142,7 +206,10 @@ function ScopeRow({ grant }: { grant: AdminGrantedScope }) {
       </td>
 
       <td className="py-3 px-4 text-right">
-        <RevokeButton grant={grant} />
+        <div className="flex items-center justify-end gap-1">
+          <RevokeButton grant={grant} />
+          {showRevokeAll && <RevokeAllButton grant={grant} grantCount={grantCount} />}
+        </div>
       </td>
     </tr>
   );
@@ -174,6 +241,11 @@ export default function AdminScopesPage() {
 
   const withExpiry    = grants.filter(g => g.expiresAt !== null).length;
   const noExpiry      = grants.filter(g => g.expiresAt === null).length;
+  const grantCounts = grants.reduce<Record<string, number>>((counts, grant) => {
+    counts[grant.userId] = (counts[grant.userId] ?? 0) + 1;
+    return counts;
+  }, {});
+  const renderedUsers = new Set<string>();
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -195,7 +267,7 @@ export default function AdminScopesPage() {
                   Active AI Access Grants
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  Users currently holding AI scope access — revoke individual grants as needed
+                  Users currently holding AI scope access — revoke one grant or all grants for a user
                 </p>
               </div>
             </div>
@@ -278,7 +350,18 @@ export default function AdminScopesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(g => <ScopeRow key={g.id} grant={g} />)}
+                  {filtered.map(g => {
+                    const showRevokeAll = !renderedUsers.has(g.userId);
+                    renderedUsers.add(g.userId);
+                    return (
+                      <ScopeRow
+                        key={g.id}
+                        grant={g}
+                        grantCount={grantCounts[g.userId]}
+                        showRevokeAll={showRevokeAll}
+                      />
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

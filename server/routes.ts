@@ -1510,6 +1510,23 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
     return res.json(scopes);
   });
 
+  // DELETE /api/admin/granted-scopes/user/:userId — admin: revoke every active grant for a user
+  app.delete("/api/admin/granted-scopes/user/:userId", requireAdmin as any, async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.params.userId as string;
+    const revokedCount = await storage.revokeAllScopesForUser(userId);
+    if (revokedCount === 0) {
+      return res.status(404).json({ error: "No active grants found for user" });
+    }
+    await sendNotification(userId, {
+      type: "warning",
+      title: "AI Access Revoked",
+      body: "All of your AI access grants have been revoked by an administrator.",
+      link: "/scope-requests",
+      emailSubject: "[NexusConsult] All AI Access Revoked",
+    });
+    return res.json({ revoked: true, revokedCount });
+  });
+
   // DELETE /api/admin/granted-scopes/:userId/:scope — admin: revoke a user's scope grant
   app.delete("/api/admin/granted-scopes/:userId/:scope", requireAdmin as any, async (req: AuthenticatedRequest, res: Response) => {
     const userId = req.params.userId as string;
