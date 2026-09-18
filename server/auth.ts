@@ -4,6 +4,7 @@ import { db } from "./db";
 import { users, corpRoles, dataRatings } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { log } from "./logger";
+import { storage } from "./storage";
 
 // ── Static reference data: corporate roles ────────────────────────────────
 const CORP_ROLE_SEED = [
@@ -140,6 +141,23 @@ export function requireAdmin(req: AuthenticatedRequest, res: Response, next: Nex
     }
     next();
   });
+}
+
+export function requireScope(scopeName: string) {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    requireAuth(req, res, async () => {
+      try {
+        const granted = await storage.hasGrantedScope(req.user!.id, scopeName);
+        if (!granted) {
+          return res.status(403).json({ message: `Access to scope '${scopeName}' is required` });
+        }
+        next();
+      } catch (error) {
+        log(`Scope check failed for '${scopeName}': ${error instanceof Error ? error.message : String(error)}`, "auth");
+        return res.status(500).json({ message: "Unable to verify access scope" });
+      }
+    });
+  };
 }
 
 export async function seedAdminUser() {

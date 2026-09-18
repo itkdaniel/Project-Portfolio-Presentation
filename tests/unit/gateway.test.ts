@@ -508,10 +508,9 @@ describe("GET /api/apps/:name/openapi", () => {
 });
 
 describe("GET /api/apps/:name/proxy (transparent proxy)", () => {
-  it("returns 503 or passes through when sub-app is offline", async () => {
+  it("requires authentication before proxying to the AI sub-app", async () => {
     const res = await request.get("/api/apps/ai/proxy/health");
-    // Either gateway-level 503 (app offline) or upstream response
-    expect([200, 503, 404, 500, 502]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
   it("returns 404 for unknown app via proxy", async () => {

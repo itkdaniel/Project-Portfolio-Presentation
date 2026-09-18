@@ -117,8 +117,8 @@ services:
     environment:
       REDIS_URL: redis://:${REDIS_PASSWORD:-redispassword}@redis:6379
       MODEL_CHECKPOINT: /app/checkpoints/latest.pt
-    ports:
-      - "8001:8001"
+    expose:
+      - "8001"
     volumes:
       - ai_checkpoints:/app/checkpoints
     depends_on:

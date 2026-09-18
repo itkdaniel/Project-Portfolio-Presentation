@@ -23,16 +23,18 @@
  *   nexus api endpoints     → GET  /api/meta/endpoints
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import request from "supertest";
 import express from "express";
 import { registerRoutes } from "../../server/routes";
 import { createServer } from "http";
+import { storage } from "../../server/storage";
 
 let app: express.Express;
 let adminToken: string;
 let demoToken: string;
 let cliTestProjectId: string;
+let scopeCheckSpy: ReturnType<typeof vi.spyOn>;
 
 beforeAll(async () => {
   app = express();
@@ -45,6 +47,7 @@ beforeAll(async () => {
     .post("/api/auth/login")
     .send({ email: "admin@nexusconsult.dev", password: "Admin@Nexus2024!" });
   adminToken = adminRes.body.token;
+  scopeCheckSpy = vi.spyOn(storage, "hasGrantedScope").mockResolvedValue(true);
 
   // Demo login — mirrors: nexus auth login -e demo@... -p ...
   const demoRes = await (request(app) as any)
@@ -68,6 +71,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  scopeCheckSpy?.mockRestore();
   if (cliTestProjectId) {
     await request(app)
       .delete(`/api/projects/${cliTestProjectId}`)

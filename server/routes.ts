@@ -13,7 +13,7 @@ import {
 } from "@shared/schema";
 import { grantedScopes } from "@shared/schema";
 import { ZodError } from "zod";
-import { requireAuth, requireAdmin, generateToken, hashPassword, seedAdminUser, CORP_ROLE_SEED, DATA_RATING_SEED, type AuthenticatedRequest } from "./auth";
+import { requireAuth, requireAdmin, requireScope, generateToken, hashPassword, seedAdminUser, CORP_ROLE_SEED, DATA_RATING_SEED, type AuthenticatedRequest } from "./auth";
 import { seedTaxData } from "./tax-seed";
 import { initTaxScheduler } from "./tax-scheduler";
 import { initWeeklyDigestScheduler, runWeeklyDigest } from "./digest-scheduler";
@@ -820,7 +820,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   ];
 
   // POST /api/ai/classify — proxied to nexus-ai when NEXUS_AI_URL is set
-  app.post("/api/ai/classify", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/ai/classify", requireScope("uncensored") as any, async (req: AuthenticatedRequest, res: Response) => {
     if (NEXUS_AI_URL) {
       const { status, data } = await proxyToAiService("POST", "/v1/ai/classify", req, req.body);
       return res.status(status).json(data);
@@ -845,7 +845,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // POST /api/ai/embed — proxied to nexus-ai when NEXUS_AI_URL is set
-  app.post("/api/ai/embed", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/ai/embed", requireScope("uncensored") as any, async (req: AuthenticatedRequest, res: Response) => {
     if (NEXUS_AI_URL) {
       const { status, data } = await proxyToAiService("POST", "/v1/ai/embed", req, req.body);
       return res.status(status).json(data);
@@ -860,7 +860,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // POST /api/ai/similarity — proxied to nexus-ai when NEXUS_AI_URL is set
-  app.post("/api/ai/similarity", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/ai/similarity", requireScope("uncensored") as any, async (req: AuthenticatedRequest, res: Response) => {
     if (NEXUS_AI_URL) {
       const { status, data } = await proxyToAiService("POST", "/v1/ai/similarity", req, req.body);
       return res.status(status).json(data);
@@ -885,7 +885,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // POST /api/ai/fill-mask — proxied to nexus-ai; no local fallback
-  app.post("/api/ai/fill-mask", requireAuth as any, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/ai/fill-mask", requireScope("uncensored") as any, async (req: AuthenticatedRequest, res: Response) => {
     if (NEXUS_AI_URL) {
       const { status, data } = await proxyToAiService("POST", "/v1/ai/fill-mask", req, req.body);
       return res.status(status).json(data);
@@ -894,7 +894,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // GET /api/ai/status — proxied to nexus-ai when NEXUS_AI_URL is set
-  app.get("/api/ai/status", requireAuth as any, async (req, res) => {
+  app.get("/api/ai/status", requireScope("uncensored") as any, async (req, res) => {
     if (NEXUS_AI_URL) {
       const { status, data } = await proxyToAiService("GET", "/v1/ai/status", req);
       return res.status(status).json(data);
@@ -903,7 +903,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // GET /api/ai/models — proxied to nexus-ai; falls back to local registry
-  app.get("/api/ai/models", requireAuth as any, async (req, res) => {
+  app.get("/api/ai/models", requireScope("uncensored") as any, async (req, res) => {
     if (NEXUS_AI_URL) {
       const { status, data } = await proxyToAiService("GET", "/v1/ai/models", req);
       return res.status(status).json(data);
@@ -912,7 +912,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // GET /api/ai/models/:id — model details (local registry fallback only)
-  app.get("/api/ai/models/:id", requireAuth as any, async (req, res) => {
+  app.get("/api/ai/models/:id", requireScope("uncensored") as any, async (req, res) => {
     const model = MODEL_REGISTRY.find(m => m.id === req.params.id);
     if (!model) return res.status(404).json({ message: `Model '${req.params.id}' not found` });
     return res.json(model);
@@ -1236,7 +1236,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ANY /api/apps/:name/proxy/... — transparent HTTP proxy to sub-app
   // app.use() avoids path-to-regexp wildcard issues with named params + bare `*`
   // in newer Express/path-to-regexp versions.
-  app.use("/api/apps/:name/proxy", async (req: Request, res: Response) => {
+  app.use(
+    "/api/apps/:name/proxy",
+    (req: AuthenticatedRequest, res: Response, next) => {
+      if (req.params.name !== "ai") return next();
+      return requireScope("uncensored")(req, res, next);
+    },
+    async (req: Request, res: Response) => {
     const registry = buildRegistry();
     const name = req.params.name as string;
     const app2 = registry.find((a) => a.name === name);
@@ -1254,7 +1260,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(503).json({ message: `${name} service unavailable` });
       }
     }
-  });
+    },
+  );
 
   // ══════════════════════════════════════════════════════════════════════════
   // NOTIFICATIONS
