@@ -251,6 +251,50 @@ describe("Notifications", () => {
 });
 
 describe("Real-time notifications", () => {
+  it("delivers exactly one saved notification only to its authenticated user", async () => {
+    const [target, other] = await Promise.all([
+      connectWebSocket(userToken),
+      connectWebSocket(adminToken),
+    ]);
+
+    const title = "Test Notification";
+    const body = "This is a test in-app notification from NexusConsult.";
+
+    try {
+      const before = await get("/api/notifications", userToken);
+      expect(before.status).toBe(200);
+      const existingIds = new Set(before.body.notifications.map((notification: any) => notification.id));
+
+      const { status } = await post("/api/notification-prefs/test", {}, userToken);
+      expect(status).toBe(200);
+
+      const targetEvent = await waitForNotification(target.messages);
+      const after = await get("/api/notifications", userToken);
+      expect(after.status).toBe(200);
+      const savedNotification = after.body.notifications.find(
+        (notification: any) =>
+          !existingIds.has(notification.id) &&
+          notification.title === title &&
+          notification.body === body,
+      );
+
+      expect(savedNotification).toBeTruthy();
+      expect(target.messages.filter((message) => message.type === "notification:created")).toHaveLength(1);
+      expect(targetEvent?.payload).toMatchObject({
+        id: savedNotification.id,
+        userId,
+        title,
+        body,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(other.messages.filter((message) => message.type === "notification:created")).toHaveLength(0);
+    } finally {
+      target.socket.close();
+      other.socket.close();
+    }
+  });
+
   it("delivers only to the matching live session and excludes an expired session", async () => {
     const [target, other] = await Promise.all([
       connectWebSocket(userToken),
