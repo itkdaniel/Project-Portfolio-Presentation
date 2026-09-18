@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     trending_interval_hours: int = 6
     trending_hn_count: int = 30
     trending_reddit_count: int = 20
+    scheduler_enabled: bool = True
 
     class Config:
         env_file = ".env"

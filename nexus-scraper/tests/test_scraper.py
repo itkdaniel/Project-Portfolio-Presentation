@@ -251,6 +251,31 @@ def test_heuristic_embed_returns_normalized_vector():
 # ── trending.py ──────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
+async def test_trending_scrape_skips_when_another_run_holds_lock():
+    from app.trending import run_trending_scrape
+
+    lock_result = MagicMock()
+    lock_result.scalar.return_value = False
+    session = AsyncMock()
+    session.execute.return_value = lock_result
+
+    with (
+        patch("app.trending.fetch_hn_top_urls") as fetch_hn,
+        patch("app.trending.fetch_reddit_top_urls") as fetch_reddit,
+    ):
+        result = await run_trending_scrape(session)
+
+    assert result == {
+        "scraped": 0,
+        "skipped": 0,
+        "errors": 0,
+        "total": 0,
+    }
+    fetch_hn.assert_not_called()
+    fetch_reddit.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_fetch_hn_top_urls_returns_list():
     hn_response = [1, 2, 3]
     story_1 = {"url": "https://example.com/story1", "title": "Story One", "type": "story"}

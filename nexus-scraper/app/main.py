@@ -40,20 +40,25 @@ async def lifespan(app: FastAPI):
 
     init_db()
 
-    _scheduler = AsyncIOScheduler()
-    _scheduler.add_job(
-        _run_trending_job,
-        "interval",
-        hours=settings.trending_interval_hours,
-        id="trending_scrape",
-        replace_existing=True,
-    )
-    _scheduler.start()
-    logger.info("APScheduler started — trending every %dh", settings.trending_interval_hours)
+    if settings.scheduler_enabled:
+        _scheduler = AsyncIOScheduler()
+        _scheduler.add_job(
+            _run_trending_job,
+            "interval",
+            hours=settings.trending_interval_hours,
+            id="trending_scrape",
+            replace_existing=True,
+        )
+        _scheduler.start()
+        logger.info("APScheduler started — trending every %dh", settings.trending_interval_hours)
+    else:
+        logger.info("In-process scheduler disabled")
 
     yield
 
-    _scheduler.shutdown(wait=False)
+    if _scheduler is not None:
+        _scheduler.shutdown(wait=False)
+        _scheduler = None
     await close_db()
     logger.info("NexusScraper shut down cleanly")
 

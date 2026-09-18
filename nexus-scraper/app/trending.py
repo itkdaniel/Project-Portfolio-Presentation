@@ -24,6 +24,10 @@ from app.scraper import scrape_url
 
 logger = logging.getLogger(__name__)
 
+# Transaction-scoped PostgreSQL advisory lock shared by every scraper replica.
+# This prevents CronJob retries and manual triggers from crawling concurrently.
+_TRENDING_SCRAPE_LOCK_ID = 5_349_435_267_273_826_289
+
 
 def _url_hash(url: str) -> str:
     return hashlib.sha256(url.encode()).hexdigest()
@@ -94,6 +98,19 @@ async def run_trending_scrape(session: AsyncSession) -> dict:
     scraped = 0
     skipped = 0
     errors = 0
+
+    lock_result = await session.execute(
+        text("SELECT pg_try_advisory_xact_lock(:lock_id)"),
+        {"lock_id": _TRENDING_SCRAPE_LOCK_ID},
+    )
+    if not lock_result.scalar():
+        logger.info("Skipping trending scrape because another run holds the lock")
+        return {
+            "scraped": 0,
+            "skipped": 0,
+            "errors": 0,
+            "total": 0,
+        }
 
     try:
         hn_items = await fetch_hn_top_urls(settings.trending_hn_count)

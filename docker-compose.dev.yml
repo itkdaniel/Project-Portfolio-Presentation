@@ -39,6 +39,10 @@ services:
       # Dev-only fallback so the local hot-reload stack renders out of the box.
       # Production (docker-compose.yml alone) requires an operator-provided token.
       NEXUS_GRAPH_ADMIN_TOKEN: ${NEXUS_GRAPH_ADMIN_TOKEN:-graph-dev-admin-token}
+  nexus-scraper:
+    volumes:
+      - ./nexus-scraper:/app
+    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8005
   nexus-analytics:
     volumes:
       - ./apps/nexus-analytics:/app

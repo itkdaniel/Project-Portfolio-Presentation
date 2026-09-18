@@ -50,6 +50,10 @@ spec:
               value: http://nexus-graph-svc:8006
             - name: NEXUS_GRAPH_URL
               value: http://nexus-graph-svc:8006
+            - name: SUB_APP_SCRAPER_URL
+              value: http://nexus-scraper-svc:8005
+            - name: NEXUS_SCRAPER_URL
+              value: http://nexus-scraper-svc:8005
           resources:
             requests:
               memory: "128Mi"

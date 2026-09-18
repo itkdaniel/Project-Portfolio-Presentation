@@ -68,6 +68,8 @@ services:
       NEXUS_QUANTUM_URL: http://nexus-quantum:8200
       SUB_APP_GRAPH_URL: http://nexus-graph:8006
       NEXUS_GRAPH_URL: http://nexus-graph:8006
+      SUB_APP_SCRAPER_URL: http://nexus-scraper:8005
+      NEXUS_SCRAPER_URL: http://nexus-scraper:8005
     ports:
       - "5000:5000"
     depends_on:
@@ -160,6 +162,7 @@ services:
       - ai-service
       - nexus-quantum
       - nexus-graph
+      - nexus-scraper
     logging: *default-logging
 
   # ── Nexus Analytics (Platform API analytics microservice) ──────────────────
@@ -241,6 +244,29 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8006/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging: *default-logging
+
+  # ── Nexus Scraper (web scraping and entity extraction microservice) ─────────
+  nexus-scraper:
+    build:
+      context: ./nexus-scraper
+      dockerfile: Dockerfile
+    container_name: nexus_scraper
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${PGUSER:-nexus}:${PGPASSWORD:-nexuspassword}@postgres:5432/${PGDATABASE:-nexusdb}
+      NEXUS_AI_URL: http://ai-service:8001
+      PORT: 8005
+    ports:
+      - "8005:8005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8005/health')\""]
       interval: 30s
       timeout: 10s
       retries: 3
