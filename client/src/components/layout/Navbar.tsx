@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText, Activity, BookOpen, LogIn, UserPlus, LogOut, ClipboardCheck, Shield, GitBranch, Search, Brain, BarChart2, Atom, Bitcoin, ChevronDown, Network, FileKey } from "lucide-react";
+import { Terminal, Menu, X, Cpu, Calendar, FlaskConical, Settings, FileText, Activity, BookOpen, LogIn, UserPlus, LogOut, ClipboardCheck, Shield, GitBranch, Search, Brain, BarChart2, Atom, Bitcoin, ChevronDown, Network, FileKey, Globe2 } from "lucide-react";
 import { NotificationBell } from "./NotificationBell";
 
 interface MeUser { id: string; username: string; email: string; role?: string; fullName?: string; profilePictureUrl?: string; }
@@ -138,6 +138,9 @@ export function Navbar() {
           )}
           {me?.role === "admin" && (
             <>
+              <Link href="/admin" className="flex items-center gap-1.5 text-sm font-medium text-cyan-400/80 hover:text-cyan-400 transition-colors" data-testid="nav-admin-scrape">
+                <Globe2 className="w-4 h-4" /> Scraper
+              </Link>
               <Link href="/admin/approvals" className="flex items-center gap-1.5 text-sm font-medium text-yellow-400/80 hover:text-yellow-400 transition-colors" data-testid="nav-admin-approvals">
                 <ClipboardCheck className="w-4 h-4" /> Approvals
               </Link>
@@ -252,6 +255,9 @@ export function Navbar() {
           )}
           {me?.role === "admin" && (
             <>
+              <Link href="/admin" className="p-2 text-sm font-medium text-cyan-400/80 hover:text-cyan-400 flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-admin-scrape-mobile">
+                <Globe2 className="w-4 h-4" /> Scraper
+              </Link>
               <Link href="/admin/approvals" className="p-2 text-sm font-medium text-yellow-400/80 hover:text-yellow-400 flex items-center gap-2" onClick={() => setMobileMenuOpen(false)} data-testid="nav-admin-approvals-mobile">
                 <ClipboardCheck className="w-4 h-4" /> Approvals
               </Link>

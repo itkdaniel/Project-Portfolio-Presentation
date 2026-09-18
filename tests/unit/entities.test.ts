@@ -7,10 +7,17 @@ import express from "express";
 import { createServer } from "http";
 import supertest from "supertest";
 import { registerRoutes } from "../../server/routes";
+import { generateToken } from "../../server/auth";
 
 let app: express.Express;
 let server: ReturnType<typeof createServer>;
 let request: ReturnType<typeof supertest>;
+const adminToken = generateToken("scrape-test-admin", "admin");
+const userToken = generateToken("scrape-test-user", "user");
+
+function asAdmin(testRequest: supertest.Test) {
+  return testRequest.set("Authorization", `Bearer ${adminToken}`);
+}
 
 beforeAll(async () => {
   app = express();
@@ -80,8 +87,16 @@ describe("GET /api/entities/:id", () => {
 // ── Scrape Jobs ───────────────────────────────────────────────────────────────
 
 describe("GET /api/scrape/jobs", () => {
+  it("rejects anonymous and non-admin callers", async () => {
+    const anonymous = await request.get("/api/scrape/jobs");
+    const nonAdmin = await request.get("/api/scrape/jobs")
+      .set("Authorization", `Bearer ${userToken}`);
+    expect(anonymous.status).toBe(401);
+    expect(nonAdmin.status).toBe(403);
+  });
+
   it("returns paginated response shape", async () => {
-    const res = await request.get("/api/scrape/jobs?limit=10&offset=0");
+    const res = await asAdmin(request.get("/api/scrape/jobs?limit=10&offset=0"));
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("total");
     expect(Array.isArray(res.body.items)).toBe(true);
@@ -89,23 +104,41 @@ describe("GET /api/scrape/jobs", () => {
 });
 
 describe("GET /api/scrape/jobs/:id", () => {
+  it("rejects anonymous and non-admin callers", async () => {
+    const anonymous = await request.get("/api/scrape/jobs/a-job");
+    const nonAdmin = await request.get("/api/scrape/jobs/a-job")
+      .set("Authorization", `Bearer ${userToken}`);
+    expect(anonymous.status).toBe(401);
+    expect(nonAdmin.status).toBe(403);
+  });
+
   it("returns 404 for unknown job ID", async () => {
-    const res = await request.get("/api/scrape/jobs/no-such-job-99999");
+    const res = await asAdmin(request.get("/api/scrape/jobs/no-such-job-99999"));
     expect(res.status).toBe(404);
     expect(res.body).toHaveProperty("message");
   });
 });
 
 describe("POST /api/scrape/url", () => {
+  it("rejects anonymous and non-admin callers", async () => {
+    const payload = { url: "https://example.com" };
+    const anonymous = await request.post("/api/scrape/url").send(payload);
+    const nonAdmin = await request.post("/api/scrape/url")
+      .set("Authorization", `Bearer ${userToken}`)
+      .send(payload);
+    expect(anonymous.status).toBe(401);
+    expect(nonAdmin.status).toBe(403);
+  });
+
   it("returns 400 when url is missing", async () => {
-    const res = await request.post("/api/scrape/url").send({});
+    const res = await asAdmin(request.post("/api/scrape/url")).send({});
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty("message");
   });
 
   it("returns 400 for malformed URL", async () => {
-    const res = await request
-      .post("/api/scrape/url")
+    const res = await asAdmin(request
+      .post("/api/scrape/url"))
       .send({ url: "not-a-real-url" });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty("message");
@@ -114,8 +147,8 @@ describe("POST /api/scrape/url", () => {
   it("creates a pending scrape job for a valid URL when microservice is offline", async () => {
     delete process.env.NEXUS_SCRAPER_URL;
     delete process.env.SUB_APP_SCRAPER_URL;
-    const res = await request
-      .post("/api/scrape/url")
+    const res = await asAdmin(request
+      .post("/api/scrape/url"))
       .send({ url: "https://news.ycombinator.com", source_label: "Test" });
     expect([202, 422]).toContain(res.status);
   });

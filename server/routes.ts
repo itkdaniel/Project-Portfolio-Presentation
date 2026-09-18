@@ -1623,7 +1623,7 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
   // ── Scrape Jobs ───────────────────────────────────────────────────────────
 
   // GET /api/scrape/jobs — paginated list of scrape jobs
-  app.get("/api/scrape/jobs", async (req, res) => {
+  app.get("/api/scrape/jobs", requireAdmin as any, async (req, res) => {
     if (NEXUS_SCRAPER_URL) {
       const { status, data } = await proxyToScraperService("GET", "/v1/scrape/jobs", req);
       return res.status(status).json(data);
@@ -1635,7 +1635,7 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
   });
 
   // GET /api/scrape/jobs/:id — single job detail
-  app.get("/api/scrape/jobs/:id", async (req, res) => {
+  app.get("/api/scrape/jobs/:id", requireAdmin as any, async (req, res) => {
     if (NEXUS_SCRAPER_URL) {
       const { status, data } = await proxyToScraperService("GET", `/v1/scrape/jobs/${req.params.id}`, req);
       return res.status(status).json(data);
@@ -1647,7 +1647,7 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
   });
 
   // POST /api/scrape/url — scrape a URL; proxy or create a pending job record
-  app.post("/api/scrape/url", async (req, res) => {
+  app.post("/api/scrape/url", requireAdmin as any, async (req, res) => {
     if (NEXUS_SCRAPER_URL) {
       const { status, data } = await proxyToScraperService("POST", "/v1/scrape/url", req, req.body);
       return res.status(status).json(data);

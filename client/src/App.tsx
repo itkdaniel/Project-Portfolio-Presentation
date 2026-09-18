@@ -28,6 +28,7 @@ import CryptoWalletPage from "@/pages/CryptoWalletPage";
 import CryptoDEXPage from "@/pages/CryptoDEXPage";
 import CryptoAnalyticsPage from "@/pages/CryptoAnalyticsPage";
 import GraphPage from "@/pages/GraphPage";
+import ScrapeAdmin from "@/pages/ScrapeAdmin";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -46,6 +47,7 @@ function Router() {
       <Route path="/scope-requests" component={ScopeRequestsPage}/>
       <Route path="/admin/approvals" component={AdminApprovalsPage}/>
       <Route path="/admin/scopes" component={AdminScopesPage}/>
+      <Route path="/admin" component={ScrapeAdmin}/>
       <Route path="/docs" component={DocsPage}/>
       <Route path="/architecture" component={ArchitecturePage}/>
       <Route path="/quantum" component={QuantumPage}/>
