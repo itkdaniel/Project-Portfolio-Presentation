@@ -1,4 +1,4 @@
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, gte, lt } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, projects, bookings, inquiries, userSettings, emailConfig, quantumConfig, resumes,
@@ -124,6 +124,14 @@ export interface IStorage {
   getAllGrantedScopes(): Promise<(GrantedScope & { username: string | null; email: string | null; fullName: string | null })[]>;
   revokeScopeById(id: string): Promise<boolean>;
   getExpiringGrants(withinDays: number): Promise<(GrantedScope & { username: string | null; email: string | null })[]>;
+
+  // Weekly digest
+  getWeeklyDigestRecipients(): Promise<Array<Pick<User, "id" | "username" | "fullName">>>;
+  getWeeklyDigestActivity(userId: string, periodStart: Date, periodEnd: Date): Promise<{
+    newProjects: number;
+    bookings: number;
+    pendingScopeRequests: number;
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -738,6 +746,47 @@ export class DatabaseStorage implements IStorage {
         ),
       );
     return rows;
+  }
+
+  // ── Weekly digest ──────────────────────────────────────────────────────────
+
+  async getWeeklyDigestRecipients(): Promise<Array<Pick<User, "id" | "username" | "fullName">>> {
+    return db
+      .select({
+        id: users.id,
+        username: users.username,
+        fullName: users.fullName,
+      })
+      .from(users)
+      .innerJoin(userSettings, eq(userSettings.userId, users.id))
+      .where(eq(userSettings.notifyWeeklyDigest, true));
+  }
+
+  async getWeeklyDigestActivity(
+    userId: string,
+    periodStart: Date,
+    periodEnd: Date,
+  ): Promise<{ newProjects: number; bookings: number; pendingScopeRequests: number }> {
+    const [projectCount, bookingCount, pendingScopeCount] = await Promise.all([
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(projects)
+        .where(and(gte(projects.createdAt, periodStart), lt(projects.createdAt, periodEnd))),
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(bookings)
+        .where(and(gte(bookings.createdAt, periodStart), lt(bookings.createdAt, periodEnd))),
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(scopeRequests)
+        .where(and(eq(scopeRequests.userId, userId), eq(scopeRequests.status, "pending"))),
+    ]);
+
+    return {
+      newProjects: Number(projectCount[0]?.count ?? 0),
+      bookings: Number(bookingCount[0]?.count ?? 0),
+      pendingScopeRequests: Number(pendingScopeCount[0]?.count ?? 0),
+    };
   }
 }
 

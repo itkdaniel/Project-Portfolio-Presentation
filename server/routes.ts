@@ -16,6 +16,7 @@ import { ZodError } from "zod";
 import { requireAuth, requireAdmin, generateToken, hashPassword, seedAdminUser, CORP_ROLE_SEED, DATA_RATING_SEED, type AuthenticatedRequest } from "./auth";
 import { seedTaxData } from "./tax-seed";
 import { initTaxScheduler } from "./tax-scheduler";
+import { initWeeklyDigestScheduler, runWeeklyDigest } from "./digest-scheduler";
 import { loadCachedResults, runTests } from "./test-runner";
 import { sendNotification, notifyAllAdmins, testSendNotification, generateApprovalLink, verifyApprovalToken } from "./notify";
 import {
@@ -625,6 +626,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ message: "Test email sent", mode: result.mode, messageId: result.messageId });
   });
 
+  // POST /api/digest/send-test — admin: send the weekly digest immediately
+  app.post("/api/digest/send-test", requireAdmin as any, async (_req: AuthenticatedRequest, res: Response) => {
+    try {
+      const result = await runWeeklyDigest();
+      return res.json({ message: "Weekly digest test run complete", ...result });
+    } catch (error) {
+      console.error("[digest] Manual test run failed:", error);
+      return res.status(500).json({ message: "Weekly digest test run failed" });
+    }
+  });
+
   // ── Admin Dashboard ────────────────────────────────────────────────────
 
   app.get("/api/admin/stats", requireAdmin as any, async (_req, res) => {
@@ -953,6 +965,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   const TAX_YEAR = new Date().getFullYear() - 1; // most recent completed tax year
   await seedTaxData(TAX_YEAR);
   initTaxScheduler().catch(console.error);
+  initWeeklyDigestScheduler();
 
   // ── Portfolio gateway proxy → nexus-tax microservice ──────────────────────
   //
