@@ -122,6 +122,7 @@ export interface IStorage {
   grantScope(data: InsertGrantedScope): Promise<GrantedScope>;
   revokeScope(userId: string, scope: string): Promise<boolean>;
   getAllGrantedScopes(): Promise<(GrantedScope & { username: string | null; email: string | null; fullName: string | null })[]>;
+  getGrantedScopeById(id: string): Promise<GrantedScope | undefined>;
   revokeScopeById(id: string): Promise<boolean>;
   getExpiringGrants(withinDays: number): Promise<(GrantedScope & { username: string | null; email: string | null })[]>;
 
@@ -711,6 +712,15 @@ export class DatabaseStorage implements IStorage {
       )
       .orderBy(sql`${grantedScopes.grantedAt} DESC`);
     return rows;
+  }
+
+  async getGrantedScopeById(id: string): Promise<GrantedScope | undefined> {
+    const [grant] = await db
+      .select()
+      .from(grantedScopes)
+      .where(eq(grantedScopes.id, id))
+      .limit(1);
+    return grant;
   }
 
   async revokeScopeById(id: string): Promise<boolean> {

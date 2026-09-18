@@ -1510,12 +1510,41 @@ ${data.reason ? `<p style="color:#a1a1aa;font-size:14px;border-left:3px solid #3
     return res.json(scopes);
   });
 
-  // DELETE /api/admin/granted-scopes/:id — admin: revoke a scope grant by row ID
-  app.delete("/api/admin/granted-scopes/:id", requireAdmin as any, async (req: AuthenticatedRequest, res: Response) => {
-    const revoked = await storage.revokeScopeById(req.params.id as string);
+  // DELETE /api/admin/granted-scopes/:userId/:scope — admin: revoke a user's scope grant
+  app.delete("/api/admin/granted-scopes/:userId/:scope", requireAdmin as any, async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.params.userId as string;
+    const scope = req.params.scope as string;
+    const revoked = await storage.revokeScope(userId, scope);
     if (!revoked) {
       return res.status(404).json({ error: "Grant not found or already revoked" });
     }
+    await sendNotification(userId, {
+      type: "warning",
+      title: "AI Access Revoked",
+      body: `Your access to "${scope}" has been revoked by an administrator.`,
+      link: "/scope-requests",
+      emailSubject: "[NexusConsult] AI Access Revoked",
+    });
+    return res.json({ revoked: true });
+  });
+
+  // DELETE /api/admin/granted-scopes/:id — backwards-compatible revoke by grant row ID
+  app.delete("/api/admin/granted-scopes/:id", requireAdmin as any, async (req: AuthenticatedRequest, res: Response) => {
+    const grant = await storage.getGrantedScopeById(req.params.id as string);
+    if (!grant || grant.revokedAt) {
+      return res.status(404).json({ error: "Grant not found or already revoked" });
+    }
+    const revoked = await storage.revokeScopeById(grant.id);
+    if (!revoked) {
+      return res.status(404).json({ error: "Grant not found or already revoked" });
+    }
+    await sendNotification(grant.userId, {
+      type: "warning",
+      title: "AI Access Revoked",
+      body: `Your access to "${grant.scope}" has been revoked by an administrator.`,
+      link: "/scope-requests",
+      emailSubject: "[NexusConsult] AI Access Revoked",
+    });
     return res.json({ revoked: true });
   });
 

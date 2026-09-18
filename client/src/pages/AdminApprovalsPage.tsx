@@ -9,9 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
-import { ClipboardCheck, CheckCircle, XCircle, Clock, RefreshCw, ChevronDown, ChevronUp, Shield, CalendarClock } from "lucide-react";
+import { ClipboardCheck, CheckCircle, XCircle, Clock, RefreshCw, ChevronDown, ChevronUp, Shield, CalendarClock, KeyRound, Trash2 } from "lucide-react";
 import { Link } from "wouter";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 
 interface ScopeRequestWithUser {
   id: string;
@@ -26,6 +26,17 @@ interface ScopeRequestWithUser {
   username?: string;
   email?: string;
   fullName?: string;
+}
+
+interface GrantedScopeWithUser {
+  id: string;
+  userId: string;
+  scope: string;
+  grantedAt: string;
+  expiresAt?: string | null;
+  username?: string | null;
+  email?: string | null;
+  fullName?: string | null;
 }
 
 function getToken() {
@@ -55,6 +66,7 @@ function statusBadge(status: string) {
 }
 
 type FilterTab = "pending" | "approved" | "denied" | "all";
+type ManagementTab = "requests" | "grants";
 
 function ReviewPanel({ req, onClose }: { req: ScopeRequestWithUser; onClose: () => void }) {
   const { toast } = useToast();
@@ -209,9 +221,62 @@ function RequestCard({ req }: { req: ScopeRequestWithUser }) {
   );
 }
 
+function GrantCard({ grant }: { grant: GrantedScopeWithUser }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const revoke = useMutation({
+    mutationFn: () => apiFetch(
+      `/api/admin/granted-scopes/${encodeURIComponent(grant.userId)}/${encodeURIComponent(grant.scope)}`,
+      { method: "DELETE" },
+    ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/admin/granted-scopes"] });
+      toast({
+        title: "Access revoked",
+        description: `${grant.fullName || grant.username || grant.userId} no longer has access to "${grant.scope}".`,
+      });
+    },
+    onError: (e: Error) => toast({ title: "Unable to revoke access", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="glass-panel rounded-xl border border-white/5 p-5" data-testid={`active-grant-${grant.id}`}>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="space-y-2 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-mono text-sm font-semibold text-primary">{grant.scope}</span>
+            <Badge className="bg-green-500/10 text-green-400 border-green-500/20">Active</Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Granted to{" "}
+            <span className="text-foreground font-medium">{grant.fullName || grant.username || grant.userId}</span>
+            {grant.email && <span className="text-muted-foreground/60 ml-1">({grant.email})</span>}
+          </p>
+          <div className="flex gap-x-5 gap-y-1 flex-wrap text-xs text-muted-foreground/70">
+            <span>Granted {format(new Date(grant.grantedAt), "MMM d, yyyy 'at' h:mm a")}</span>
+            <span>{grant.expiresAt ? `Expires ${format(new Date(grant.expiresAt), "MMM d, yyyy 'at' h:mm a")}` : "No expiry"}</span>
+          </div>
+        </div>
+        <Button
+          size="sm"
+          variant="destructive"
+          className="gap-1.5"
+          disabled={revoke.isPending}
+          onClick={() => revoke.mutate()}
+          data-testid={`btn-revoke-${grant.id}`}
+        >
+          {revoke.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+          Revoke
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminApprovalsPage() {
   const token = getToken();
   const [filter, setFilter] = useState<FilterTab>("pending");
+  const [managementTab, setManagementTab] = useState<ManagementTab>("requests");
 
   const { data: me } = useQuery<{ role: string }>({
     queryKey: ["/api/auth/me"],
@@ -223,6 +288,13 @@ export default function AdminApprovalsPage() {
     queryKey: ["/api/scope-requests"],
     queryFn:  () => apiFetch("/api/scope-requests"),
     enabled:  !!token && me?.role === "admin",
+    refetchInterval: 30_000,
+  });
+
+  const { data: grants = [], isLoading: grantsLoading } = useQuery<GrantedScopeWithUser[]>({
+    queryKey: ["/api/admin/granted-scopes"],
+    queryFn: () => apiFetch("/api/admin/granted-scopes"),
+    enabled: !!token && me?.role === "admin" && managementTab === "grants",
     refetchInterval: 30_000,
   });
 
@@ -258,16 +330,38 @@ export default function AdminApprovalsPage() {
               <ClipboardCheck className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-display font-bold" data-testid="approvals-title">Scope Approvals</h1>
+              <h1 className="text-2xl font-display font-bold" data-testid="approvals-title">AI Access Management</h1>
               <p className="text-sm text-muted-foreground">
-                Review and manage user scope access requests
+                Review requests and manage active user access
                 {pendingCount > 0 && <span className="ml-2 bg-yellow-500/20 text-yellow-400 text-xs px-2 py-0.5 rounded-full">{pendingCount} pending</span>}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Filter tabs */}
+        <div className="flex items-center gap-1 mb-6 bg-white/5 rounded-lg p-1 w-fit" data-testid="management-tabs">
+          <button
+            onClick={() => setManagementTab("requests")}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
+              managementTab === "requests" ? "bg-primary/10 text-primary border border-primary/20" : "text-muted-foreground hover:text-foreground"
+            }`}
+            data-testid="tab-requests"
+          >
+            <ClipboardCheck className="w-4 h-4" /> Requests
+          </button>
+          <button
+            onClick={() => setManagementTab("grants")}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
+              managementTab === "grants" ? "bg-primary/10 text-primary border border-primary/20" : "text-muted-foreground hover:text-foreground"
+            }`}
+            data-testid="tab-active-grants"
+          >
+            <KeyRound className="w-4 h-4" /> Active Grants
+          </button>
+        </div>
+
+        {managementTab === "requests" ? (
+          <>
         <div className="flex items-center gap-1 mb-6 bg-white/5 rounded-lg p-1 w-fit" data-testid="approvals-filter">
           {(["pending", "approved", "denied", "all"] as FilterTab[]).map(t => (
             <button
@@ -299,6 +393,21 @@ export default function AdminApprovalsPage() {
         ) : (
           <div className="space-y-4">
             {filtered.map(req => <RequestCard key={req.id} req={req} />)}
+          </div>
+        )}
+          </>
+        ) : grantsLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground justify-center py-16">
+            <RefreshCw className="w-4 h-4 animate-spin" /> Loading…
+          </div>
+        ) : grants.length === 0 ? (
+          <div className="text-center py-16 text-muted-foreground" data-testid="grants-empty">
+            <KeyRound className="w-10 h-10 mx-auto mb-3 opacity-30" />
+            <p className="font-medium">No active grants</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {grants.map(grant => <GrantCard key={grant.id} grant={grant} />)}
           </div>
         )}
       </main>
